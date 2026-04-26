@@ -22,11 +22,9 @@ std::vector<Token> Tokenizer::tokenize() {
             case ':': tokens.push_back({TokenType::COLON, ":"}); advance(); break;
             case ',': tokens.push_back({TokenType::COMMA, ","}); advance(); break;
             
-            // --- LO NUEVO ---
             case '"': 
                 tokens.push_back(readString()); 
                 break;
-            // ----------------
             
             default:
                 if (std::isdigit(c)) {
@@ -66,7 +64,7 @@ void Tokenizer::skipWhitespace() {
 
 // Método para leer textos entre comillas
 Token Tokenizer::readString() {
-    advance(); // Saltamos la primera comilla de apertura '"'
+    advance();
     
     std::string value = "";
     
@@ -79,7 +77,7 @@ Token Tokenizer::readString() {
     if (cursor < source.length() && peek() == '"') {
         advance(); // Saltamos la comilla de cierre '"'
     } else {
-        // Si el usuario olvidó cerrar las comillas (ej: "nombre )
+        // Si el usuario olvidó cerrar las comillas
         return {TokenType::UNKNOWN, value}; 
     }
 
@@ -91,7 +89,6 @@ Token Tokenizer::readString() {
     return {TokenType::STRING, value};
 }
 
-// Motor para leer números (ej: 100, 50, 1)
 Token Tokenizer::readNumber() {
     std::string value = "";
     while (cursor < source.length() && std::isdigit(peek())) {
@@ -100,10 +97,8 @@ Token Tokenizer::readNumber() {
     return {TokenType::NUMBER, value};
 }
 
-// Motor para leer comandos o palabras clave
 Token Tokenizer::readIdentifier() {
     std::string value = "";
-    // Lee mientras sean letras o números
     while (cursor < source.length() && std::isalnum(peek())) {
         value += advance();
     }
@@ -113,7 +108,8 @@ Token Tokenizer::readIdentifier() {
     if (value == "GET")    return {TokenType::GET, value};
     if (value == "DELETE") return {TokenType::DELETE, value};
     if (value == "CREATE") return {TokenType::CREATE, value};
+    if (value == "UPDATE") return {TokenType::UPDATE, value};
 
-    // Si no es comando, lo tratamos como un texto normal (sin comillas)
+    // Si no es comando, lo tratamos como un texto normal
     return {TokenType::STRING, value};
 }

@@ -4,10 +4,9 @@
 #include <string>
 #include <vector>
 
-// 1. Definimos qué tipos de palabras entiende nuestra base de datos
 enum class TokenType {
     // Comandos principales
-    CREATE, INSERT, GET, DELETE, 
+    CREATE, INSERT, GET, DELETE, UPDATE,
     
     // Elementos de datos
     ID,       
@@ -25,13 +24,11 @@ enum class TokenType {
     UNKNOWN      // Para errores (ej. un símbolo extraño @ o $)
 };
 
-// 2. Estructura que representa cada pedacito de información extraído
 struct Token {
     TokenType type;
-    std::string value;
+    std::string lexeme;
 };
 
-// 3. Declaración de la clase que hará el trabajo sucio
 class Tokenizer {
 public:
     Tokenizer(const std::string& input);

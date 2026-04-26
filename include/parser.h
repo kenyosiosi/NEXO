@@ -3,11 +3,13 @@
 
 #include "tokenizer.h"
 #include <stdexcept>
+#include <vector>
+#include <string>
 
 class Parser {
 public:
     Parser(const std::vector<Token>& tokens);
-    void parse(); // Aquí es donde validaremos todo
+    void parse(); 
 
 private:
     std::vector<Token> tokens;
@@ -18,9 +20,13 @@ private:
     bool match(TokenType type);
     void consume(TokenType type, const std::string& message);
 
-    // Funciones de validación gramatical
+    // Funciones de validación gramatical (El CRUD completo)
     void parseInsert();
-    void parseJson();
+    void parseGet();    
+    void parseDelete(); 
+    void parseUpdate();
+    void parseCreate(); 
+    void parseJson();   
 };
 
 #endif

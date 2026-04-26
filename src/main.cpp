@@ -23,20 +23,41 @@ std::string tokenTypeToString(TokenType type) {
 }
 
 int main() {
-    std::string input = "INSERT { \"id\": 105 }";
-    
-    try {
-        //Tokenizar
-        Tokenizer tokenizer(input);
-        std::vector<Token> tokens = tokenizer.tokenize();
+    std::string input;
 
-        //Parsear
-        Parser parser(tokens);
-        parser.parse(); // Si algo está mal, saltará al 'catch'
+    std::cout << "--- NEXO DATABASE SYSTEM ---" << std::endl;
+    std::cout << "Escribe 'exit' para salir." << std::endl;
 
-    } catch (const std::exception& e) {
-        std::cerr << "FALLO: " << e.what() << std::endl;
+    while (true) {
+        // 1. Mostrar un indicador de comando
+        std::cout << "\nNEXO > ";
+        
+        // 2. Leer la línea completa de la terminal
+        std::getline(std::cin, input);
+
+        // 3. Opción para salir del programa
+        if (input == "exit" || input == "EXIT") {
+            break;
+        }
+
+        // 4. Si la entrada está vacía, saltar al siguiente ciclo
+        if (input.empty()) continue;
+
+        try {
+            // Tokenizar lo que el usuario escribió
+            Tokenizer tokenizer(input);
+            std::vector<Token> tokens = tokenizer.tokenize();
+
+            // Parsear los tokens generados
+            Parser parser(tokens);
+            parser.parse(); 
+
+        } catch (const std::exception& e) {
+            // Si el usuario escribe mal el JSON o el comando, aquí se atrapa el error
+            std::cerr << "ERROR DE SINTAXIS: " << e.what() << std::endl;
+        }
     }
 
+    std::cout << "Cerrando sistema..." << std::endl;
     return 0;
 }
