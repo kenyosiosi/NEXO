@@ -1,0 +1,10 @@
+# Ejecutables
+*.exe
+app.exe
+
+# Carpetas de compilación
+bin/
+obj/
+
+# Archivos temporales de VS Code
+.vscode/
