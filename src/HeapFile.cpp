@@ -27,16 +27,33 @@ HeapFile::HeapFile(const std::string& db_path) : filename(db_path)
 
 void HeapFile::writePage(int page_id, const std::vector<char>& data)
 {
-    // Calculamos el offset: Si es la página 0, byte 0. Si es la 1, byte 4096.
+    if (data.size() != PAGE_SIZE) return; // Validación de tamaño
+
+    // 1. VALIDACIÓN DE SEGURIDAD (Paso 3): Evitar archivos "huecos"
+    // Buscamos el final del archivo para saber cuánto mide actualmente
+    file.seekg(0, std::ios::end);
+    std::streampos file_size = file.tellg();
+    int max_allowed_page = (file_size / PAGE_SIZE); 
+
+    // Solo permitimos escribir en páginas existentes o en la inmediatamente siguiente (append)
+    if (page_id > max_allowed_page) 
+    {
+        std::cerr << "Error: Intento de escritura fuera de límites. ID: " << page_id 
+                << " Max permitido: " << max_allowed_page << std::endl;
+        return;
+    }
+
+    // 2. Ejecutar la escritura
     std::streampos pos = static_cast<std::streampos>(page_id) * PAGE_SIZE;
+    file.seekp(pos); 
     
-    file.seekp(pos); // Mover el puntero de escritura
     if (file.fail()) {
-        file.clear(); // Limpiar errores si intentamos escribir muy lejos
+        file.clear();
+        return;
     }
     
     file.write(data.data(), PAGE_SIZE);
-    file.flush(); // Aseguramos que se escriba al disco físicamente
+    file.flush(); // Persistencia física
 }
 
 // Cerramos el archivo al destruir el objeto
