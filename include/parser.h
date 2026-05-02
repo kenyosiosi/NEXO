@@ -9,7 +9,7 @@
 class Parser {
 public:
     Parser(const std::vector<Token>& tokens);
-    void parse(); 
+    int parse(); // <--- Cambiado a int
 
 private:
     std::vector<Token> tokens;
@@ -20,13 +20,13 @@ private:
     bool match(TokenType type);
     void consume(TokenType type, const std::string& message);
 
-    // Funciones de validación gramatical (El CRUD completo)
-    void parseInsert();
-    void parseGet();    
-    void parseDelete(); 
-    void parseUpdate();
+    // Funciones que devuelven el ID detectado
+    int parseInsert(); 
+    int parseGet();    
+    int parseDelete(); 
+    int parseUpdate();
     void parseCreate(); 
-    void parseJson();   
+    int parseJson();   
 };
 
 #endif

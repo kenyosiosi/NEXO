@@ -8,12 +8,8 @@
 #include <algorithm>
 #include "HeapFile.h"
 #include "Serializer.h"
+#include "Types.h"
 
-struct RecordPointer 
-{
-    int page_id;
-    int slot_offset;
-};
 
 class StorageManager 
 {

@@ -27,7 +27,7 @@ setup:
 # Enlace final: Une todos los .o para crear el .exe
 $(TARGET): $(OBJECTS)
 	$(CXX) $(CXXFLAGS) $(OBJECTS) -o $(TARGET)
-	@echo "--- Compilación terminada con éxito: $(TARGET) ---"
+	@echo "--- Compilacion terminada con exito: $(TARGET) ---"
 
 # Compilación de objetos: Convierte cada .cpp en un .o
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp

@@ -1,47 +1,49 @@
 #include "../include/parser.h"
 #include <iostream>
+#include <string>
 
 Parser::Parser(const std::vector<Token>& tokens) : tokens(tokens), pos(0) {}
 
-void Parser::parse() {
-    if (tokens.empty()) return;
+int Parser::parse() {
+    if (tokens.empty()) return -1;
 
     Token t = peek();
     if (match(TokenType::INSERT)) {
-        parseInsert();
+        return parseInsert();
     } else if (match(TokenType::GET)) {
-        parseGet();
+        return parseGet();
     } else if (match(TokenType::DELETE)) {
-        parseDelete();
-    } else if (match(TokenType::UPDATE)) { // <--- Nueva ruta para Update
-        parseUpdate();
+        return parseDelete();
+    } else if (match(TokenType::UPDATE)) {
+        return parseUpdate();
     } else if (match(TokenType::CREATE)) {
         parseCreate();
+        return -1;
     } else if (t.type == TokenType::END_OF_FILE) {
-        return;
+        return -1;
     } else {
         throw std::runtime_error("Comando no reconocido: " + t.lexeme);
     }
 }
 
-void Parser::parseInsert() {
-    parseJson();
+int Parser::parseInsert() {
+    int id = parseJson();
     std::cout << "!Sintaxis de INSERT validada con exito!" << std::endl;
+    return id;
 }
 
-void Parser::parseGet() {
-    parseJson();
+int Parser::parseGet() {
+    int id = parseJson();
     std::cout << "!Sintaxis de GET validada con exito!" << std::endl;
+    return id;
 }
 
-void Parser::parseDelete() {
-    parseJson();
-    std::cout << "!Sintaxis de DELETE validada con exito!" << std::endl;
+int Parser::parseDelete() {
+    return parseJson();
 }
 
-void Parser::parseUpdate() {
-    parseJson(); // El update necesita el ID para saber que registro cambiar
-    std::cout << "!Sintaxis de UPDATE validada con exito!" << std::endl;
+int Parser::parseUpdate() {
+    return parseJson();
 }
 
 void Parser::parseCreate() {
@@ -52,7 +54,7 @@ void Parser::parseCreate() {
     std::cout << "CREANDO tabla/archivo: " << nameToken.lexeme << std::endl;
 }
 
-void Parser::parseJson() {
+int Parser::parseJson() {
     consume(TokenType::LBRACE, "Se esperaba '{'");
     consume(TokenType::ID, "Se esperaba el campo 'id'");
     consume(TokenType::COLON, "Se esperaba ':'");
@@ -62,19 +64,23 @@ void Parser::parseJson() {
         throw std::runtime_error("El valor del ID debe ser un numero");
     }
 
-    std::cout << "ID detectado: " << idToken.lexeme << std::endl;
+    int idDetectado = std::stoi(idToken.lexeme);
+    std::cout << "ID detectado: " << idDetectado << std::endl;
+    
     consume(TokenType::RBRACE, "Se esperaba '}'");
+    return idDetectado;
 }
 
-// --- Funciones Auxiliares ---
+// --- FUNCIONES AUXILIARES ---
+
 Token Parser::advance() {
     if (pos < tokens.size()) return tokens[pos++];
-    return tokens.back();
+    return (tokens.empty() ? Token{TokenType::UNKNOWN, ""} : tokens.back());
 }
 
 Token Parser::peek() {
     if (pos < tokens.size()) return tokens[pos];
-    return tokens.back();
+    return (tokens.empty() ? Token{TokenType::UNKNOWN, ""} : tokens.back());
 }
 
 bool Parser::match(TokenType type) {
