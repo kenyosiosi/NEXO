@@ -9,7 +9,7 @@
 #include <iostream>
 #include "HeapFile.h"
 #include "Serializer.h"
-#include "Types.h"
+#include "../Core/Types.h"
 
 
 class StorageManager 

@@ -1,5 +1,5 @@
-#include "../include/IndexManager.h"
-#include "../include/StorageManager.h"
+#include "../../include/B-tree/IndexManager.h"
+#include "../../include/Storage/StorageManager.h"
 #include <iostream>
 #include <fstream>
 

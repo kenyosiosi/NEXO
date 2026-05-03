@@ -4,8 +4,8 @@
 #include <vector>
 #include <string>
 #include <cstring>
-#include "HeapFile.h"
-#include "Types.h"
+#include "../Storage/HeapFile.h"
+#include "../Core/Types.h"
 // Para usar tu struct RecordPointer
 
 // El grado t define la capacidad del nodo en disco.
