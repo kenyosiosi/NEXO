@@ -10,10 +10,15 @@ BINDIR    = bin
 
 # --- 1.-CAMBIO ---
 # Busca TODOS los .cpp dentro de src y sus subcarpetas
-SOURCES   = $(shell find $(SRCDIR) -name '*.cpp')
+# Busca archivos en las carpetas específicas (más seguro)
+SOURCES   = $(wildcard $(SRCDIR)/*.cpp) \
+            $(wildcard $(SRCDIR)/Storage/*.cpp) \
+            $(wildcard $(SRCDIR)/B-tree/*.cpp) \
+            $(wildcard $(SRCDIR)/query_engine/*.cpp)
 
-# Genera la ruta de los objetos manteniendo la estructura de carpetas
+# Genera los objetos
 OBJECTS   = $(patsubst $(SRCDIR)/%.cpp, $(OBJDIR)/%.o, $(SOURCES))
+
 
 TARGET    = $(BINDIR)/gestor_db.exe
 

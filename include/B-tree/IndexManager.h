@@ -1,54 +1,38 @@
-#ifndef INDEX_MANAGER_H
-#define INDEX_MANAGER_H
+#ifndef INDEXMANAGER_H
+#define INDEXMANAGER_H
 
-#include <vector>
-#include <string>
-#include <cstring>
-#include "../Storage/HeapFile.h"
+#include "../Storage/StorageManager.h"
 #include "../Core/Types.h"
-// Para usar tu struct RecordPointer
+#include <vector>
 
-// El grado t define la capacidad del nodo en disco.
-// Un t=100 permite unas 199 llaves por nodo, ideal para páginas de 4KB.
-const int MAX_T = 100; 
-
-// Esta es la estructura plana que escribiremos físicamente en el disco.
-// IMPORTANTE: Ya no usamos punteros de memoria (*), usamos IDs de página (int)
+// Estructura del nodo en disco (ajustada a PAGE_SIZE de 4KB)
 struct DiskNode {
     bool is_leaf;
-    int n; // Número actual de llaves
-    int keys[2 * MAX_T - 1];
-    RecordPointer pointers[2 * MAX_T - 1];
-    int children[2 * MAX_T]; // IDs de página de los hijos en vez de BTreeNode*
+    int n; // número de llaves actuales
+    int keys[200]; // Ajusta el tamaño según necesites
+    RecordPointer pointers[200]; // Referencias al .bin
+    int children[201]; // Referencias a otras páginas del .idx
 };
 
 class IndexManager {
 private:
-    HeapFile indexFile;
+    StorageManager* storage; // Conexión al storage
     int rootPageId;
     int next_page_id;
-    int t;
+    int t; // Grado mínimo
 
-    // Métodos internos para leer/escribir páginas de 4KB
-    void readNode(int page_id, DiskNode& node);
-    void writeNode(int page_id, const DiskNode& node);
-    
-    // Métodos para la Página 0 (Cabecera)
     void saveHeader();
     void loadHeader();
-
-    // Lógica de B-Tree adaptada a disco
+    void writeNode(int id, const DiskNode& node);
+    void readNode(int id, DiskNode& node);
     void splitChild(int parent_id, int i, int child_id);
-    void insertNonFull(int page_id, int k, RecordPointer p);
+    void insertNonFull(int page_id, int k, RecordPointer p_data);
     RecordPointer searchRecursive(int page_id, int k);
 
 public:
-    IndexManager(const std::string& path, int degree = MAX_T);
-    
+    IndexManager(StorageManager* sm, int degree);
     void insert(int k, RecordPointer p);
     RecordPointer search(int k);
-    
-    int getRootId() const { return rootPageId; }
 };
 
 #endif

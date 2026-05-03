@@ -7,6 +7,9 @@
 #include <iostream>
 #include <filesystem>
 
+// Definir aquí para que sea global en el proyecto
+const int PAGE_SIZE = 4096; 
+
 class HeapFile
 {
     private:

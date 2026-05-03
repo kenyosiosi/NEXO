@@ -6,57 +6,18 @@
 #include "../include/Storage/StorageManager.h"
 #include "../include/B-tree/IndexManager.h"
 
-/*int main() {
-    // 1. Inicializar los motores (estos abrirán los archivos .bin e .idx)
-    StorageManager engine("data/database.bin"); 
-    IndexManager index("data/usuarios.idx", 3); // <--- USA EL INDEX MANAGER
-    
-    std::string input;
-    std::cout << "--- NEXO DATABASE SYSTEM (Persistente) ---" << std::endl;
-
-while (true) {
-    std::cout << "\nNEXO > ";
-    std::getline(std::cin, input);
-    if (input == "exit") break;
-
-    try {
-        Tokenizer tokenizer(input);
-        auto tokens = tokenizer.tokenize();
-        Parser parser(tokens);
-        
-        // 1. EL PARSER DA EL ID REAL DE LA TERMINAL
-        int id_usuario = parser.parse(); 
-
-        if (tokens[0].type == TokenType::INSERT) {
-            std::map<std::string, std::string> data;
-            data["id"] = std::to_string(id_usuario);
-            
-            RecordPointer ptr = engine.insertRecord(data);
-            index.insert(id_usuario, ptr); // Guardo el ID real en el .idx
-            std::cout << "Guardado con exito!" << std::endl;
-        } 
-        else if (tokens[0].type == TokenType::GET) {
-            // 2. BUSCA EL ID REAL QUE ESCRIBIÓ EL USUARIO
-            RecordPointer ptr = index.search(id_usuario);
-            
-            if (ptr.page_id != -1) {
-                std::cout << "ID " << id_usuario << " encontrado en Pag " << ptr.page_id << std::endl;
-            } else {
-                std::cout << "El ID " << id_usuario << " NO existe en el indice." << std::endl;
-            }
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "ERROR: " << e.what() << std::endl;
-    }
-}
-    return 0;
-}*/
-
 int main() {
-    std::string input;
+
+//  StorageManager ahora centraliza AMBOS archivos (.bin y .idx)
+StorageManager storage("data/nexo.bin", "data/nexo.idx"); 
+
+//  IndexManager ya no abre archivos, ahora recibe el puntero del storage
+IndexManager index(&storage, 3);
+    
     std::cout << "--- NEXO DATABASE SYSTEM ---" << std::endl;
 
     while (true) {
+        std::string input;
         std::cout << "\nNEXO > ";
         std::getline(std::cin, input);
 
@@ -64,28 +25,48 @@ int main() {
         if (input.empty()) continue;
 
         try {
-            // 1. Tokenización
             Tokenizer tokenizer(input);
             std::vector<Token> tokens = tokenizer.tokenize();
-
-            // 2. Parsing 
             Parser parser(tokens);
-            std::map<std::string, std::string> data = parser.parse();
-
-            // 3. Mostrar resultados
-            std::cout << "Operacion detectada: " << data["operation"] << std::endl;
-            std::cout << "Datos extraidos:" << std::endl;
             
-            for (auto const& [key, val] : data) {
-                if (key != "operation") {
-                    std::cout << "  [" << key << "] : " << val << std::endl;
+            // El Parser devuelve el mapa de la consulta
+            std::map<std::string, std::string> queryData = parser.parse();
+            std::string op = queryData["operation"];
+
+            if (op == "INSERT") {
+                int id = std::stoi(queryData["id"]); 
+
+                // 1. El StorageManager guarda el JSON y nos da el "puntero" (página y slot)
+                RecordPointer ptr = storage.insertRecord(queryData); 
+
+                // 2. El IndexManager guarda el ID y ese puntero en el B-Tree
+                index.insert(id, ptr); 
+                
+                std::cout << "Registro " << id << " insertado correctamente." << std::endl;
+            } 
+            else if (op == "GET") {
+                int id_a_buscar = std::stoi(queryData["id"]);
+
+                // 1. Buscamos en el índice para obtener la ubicación física
+                RecordPointer ptr = index.search(id_a_buscar);
+
+                if (ptr.page_id != -1) {
+                    // 2. Le pedimos al StorageManager que lea y deserialice esa ubicación
+                    std::map<std::string, std::string> result = storage.getRecord(ptr);
+
+                    std::cout << "--- Registro Encontrado ---" << std::endl;
+                    for (auto const& [key, val] : result) {
+                        if (key != "operation") { // No mostrar la operación interna
+                            std::cout << key << ": " << val << std::endl;
+                        }
+                    }
+                } else {
+                    std::cout << "Error: El ID " << id_a_buscar << " no existe en la base de datos." << std::endl;
                 }
             }
-
         } catch (const std::exception& e) {
-            std::cerr << "ERROR DE SINTAXIS: " << e.what() << std::endl;
+            std::cerr << "Error de ejecución: " << e.what() << std::endl;
         }
     }
-
     return 0;
 }

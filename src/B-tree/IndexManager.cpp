@@ -1,56 +1,65 @@
 #include "../../include/B-tree/IndexManager.h"
-#include "../../include/Storage/StorageManager.h"
 #include <iostream>
-#include <fstream>
+#include <cstring>
 
-IndexManager::IndexManager(const std::string& path, int degree) 
-    : indexFile(path), t(degree) {
-    
-    // Verificamos si el archivo es nuevo (tamaño 0 o no existe)
-    std::ifstream check(path, std::ios::binary | std::ios::ate);
-    if (!check.is_open() || check.tellg() <= 0) {
-        // ES UN ARCHIVO NUEVO: Inicializamos la cabecera
-        rootPageId = -1;  // -1 significa que el árbol está vacío
-        next_page_id = 1; // La página 0 es la cabecera, los datos empiezan en la 1
+// El constructor ahora recibe el puntero al StorageManager
+IndexManager::IndexManager(StorageManager* sm, int degree) 
+    : storage(sm), t(degree) 
+{
+    // Le pedimos al storage la cabecera del archivo de índices
+    std::vector<char> buffer = storage->readIndexPage(0);
+
+    // Verificamos si es un archivo nuevo (buffer vacío o con puros ceros)
+    bool is_new = true;
+    for (int i = 0; i < 12; i++) {
+        if (buffer[i] != 0) {
+            is_new = false;
+            break;
+        }
+    }
+
+    if (is_new) {
+        // ES UN ARCHIVO NUEVO
+        rootPageId = -1;  
+        next_page_id = 1; 
         saveHeader();
     } else {
-        // EL ARCHIVO YA EXISTE: Cargamos dónde se quedó la raíz la última vez
+        // EL ARCHIVO YA EXISTE
         loadHeader();
     }
 }
 
 void IndexManager::loadHeader() {
-    std::vector<char> buffer = indexFile.readPage(0);
-    // Usamos memcpy para extraer los valores de los primeros bytes
+    std::vector<char> buffer = storage->readIndexPage(0);
     memcpy(&rootPageId, &buffer[0], sizeof(int));
     memcpy(&next_page_id, &buffer[4], sizeof(int));
     memcpy(&t, &buffer[8], sizeof(int));
 }
 
 void IndexManager::saveHeader() {
-    std::vector<char> buffer(4096, 0); // Creamos una página vacía
-    // Metemos los datos en los primeros bytes del buffer
+    std::vector<char> buffer(4096, 0); 
     memcpy(&buffer[0], &rootPageId, sizeof(int));
     memcpy(&buffer[4], &next_page_id, sizeof(int));
     memcpy(&buffer[8], &t, sizeof(int));
-    indexFile.writePage(0, buffer); // Guardamos en la página 0
+    
+    // Delegamos la escritura al StorageManager
+    storage->writeIndexPage(0, buffer); 
 }
 
 void IndexManager::readNode(int page_id, DiskNode& node) {
-    std::vector<char> buffer = indexFile.readPage(page_id);
+    std::vector<char> buffer = storage->readIndexPage(page_id);
     memcpy(&node, buffer.data(), sizeof(DiskNode));
 }
 
 void IndexManager::writeNode(int page_id, const DiskNode& node) {
     std::vector<char> buffer(4096, 0);
     memcpy(buffer.data(), &node, sizeof(DiskNode));
-    indexFile.writePage(page_id, buffer);
+    storage->writeIndexPage(page_id, buffer);
 }
 
 void IndexManager::insert(int k, RecordPointer p) {
     if (rootPageId == -1) {
-        // Árbol vacío: Creamos la primera raíz
-        DiskNode root;
+      DiskNode root = {}; // Las llaves '{}' fuerzan la inicialización en cero
         root.is_leaf = true;
         root.n = 1;
         root.keys[0] = k;
@@ -58,25 +67,24 @@ void IndexManager::insert(int k, RecordPointer p) {
         
         rootPageId = next_page_id++;
         writeNode(rootPageId, root);
-        saveHeader(); // Actualizamos la Página 0 porque la raíz cambió
+        saveHeader(); 
     } else {
-        DiskNode root;
+        DiskNode root = {}; // Las llaves '{}' fuerzan la inicialización en cero
         readNode(rootPageId, root);
 
         if (root.n == 2 * t - 1) {
-            // La raíz está llena, hay que dividirla
             DiskNode s;
             s.is_leaf = false;
             s.n = 0;
             s.children[0] = rootPageId;
 
             int newRootId = next_page_id++;
-            writeNode(newRootId, s); // <--- AÑADE ESTA LÍNEA AQUÍ
+            writeNode(newRootId, s); 
             splitChild(newRootId, 0, rootPageId);
             
             rootPageId = newRootId;
             insertNonFull(rootPageId, k, p);
-            saveHeader(); // La raíz cambió, actualizamos la Página 0
+            saveHeader(); 
         } else {
             insertNonFull(rootPageId, k, p);
         }
@@ -120,7 +128,6 @@ void IndexManager::splitChild(int parent_id, int i, int child_id) {
     p.pointers[i] = y.pointers[t - 1];
     p.n++;
 
-    // Guardamos los 3 nodos modificados en el disco
     writeNode(child_id, y);
     writeNode(z_id, z);
     writeNode(parent_id, p);
@@ -140,7 +147,7 @@ void IndexManager::insertNonFull(int page_id, int k, RecordPointer p_data) {
         node.keys[i + 1] = k;
         node.pointers[i + 1] = p_data;
         node.n++;
-        writeNode(page_id, node); // Guardamos los cambios
+        writeNode(page_id, node); 
     } else {
         while (i >= 0 && node.keys[i] > k) i--;
         i++;
@@ -148,7 +155,7 @@ void IndexManager::insertNonFull(int page_id, int k, RecordPointer p_data) {
         readNode(node.children[i], child);
         if (child.n == 2 * t - 1) {
             splitChild(page_id, i, node.children[i]);
-            readNode(page_id, node); // Recargar padre después del split
+            readNode(page_id, node); 
             if (node.keys[i] < k) i++;
         }
         insertNonFull(node.children[i], k, p_data);
@@ -156,7 +163,7 @@ void IndexManager::insertNonFull(int page_id, int k, RecordPointer p_data) {
 }
 
 RecordPointer IndexManager::search(int k) {
-    if (rootPageId == -1) return {-1, -1}; // No hay nada insertado
+    if (rootPageId == -1) return {-1, -1}; 
     return searchRecursive(rootPageId, k);
 }
 
@@ -167,11 +174,9 @@ RecordPointer IndexManager::searchRecursive(int page_id, int k) {
     int i = 0;
     while (i < node.n && k > node.keys[i]) i++;
 
-    // Si la encontramos, retornamos el puntero (page_id y offset del HeapFile)
     if (i < node.n && node.keys[i] == k) return node.pointers[i];
 
-    if (node.is_leaf) return {-1, -1}; // Llegamos a una hoja y no estaba
+    if (node.is_leaf) return {-1, -1}; 
 
-    // Seguimos bajando por el árbol, leyendo la página del hijo correspondiente
     return searchRecursive(node.children[i], k);
 }
