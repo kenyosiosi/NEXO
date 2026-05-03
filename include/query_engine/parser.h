@@ -5,11 +5,14 @@
 #include <stdexcept>
 #include <vector>
 #include <string>
-//
+#include <map>
+
 class Parser {
 public:
     Parser(const std::vector<Token>& tokens);
-    int parse(); // <--- Cambiado a int
+    
+    //parse devuelve el mapa con los datos extraídos
+    std::map<std::string, std::string> parse(); 
 
 private:
     std::vector<Token> tokens;
@@ -20,13 +23,14 @@ private:
     bool match(TokenType type);
     void consume(TokenType type, const std::string& message);
 
-    // Funciones que devuelven el ID detectado
-    int parseInsert(); 
-    int parseGet();    
-    int parseDelete(); 
-    int parseUpdate();
-    void parseCreate(); 
-    int parseJson();   
+    //retornan el mapa de datos
+    std::map<std::string, std::string> parseInsert();
+    std::map<std::string, std::string> parseGet();    
+    std::map<std::string, std::string> parseDelete(); 
+    std::map<std::string, std::string> parseUpdate(); 
+    std::map<std::string, std::string> parseCreate(); 
+    
+    std::map<std::string, std::string> parseJson();   
 };
 
 #endif

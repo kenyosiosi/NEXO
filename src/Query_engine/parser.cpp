@@ -1,74 +1,79 @@
 #include "../../include/query_engine/parser.h"
 #include <iostream>
-#include <string>
 
 Parser::Parser(const std::vector<Token>& tokens) : tokens(tokens), pos(0) {}
 
-int Parser::parse() {
-    if (tokens.empty()) return -1;
+std::map<std::string, std::string> Parser::parse() {
+    if (tokens.empty()) return {};
 
     Token t = peek();
+    // Guarda el comando para saber qué operación hacer
+    std::map<std::string, std::string> result;
+
     if (match(TokenType::INSERT)) {
-        return parseInsert();
+        result = parseInsert();
+        result["operation"] = "INSERT";
     } else if (match(TokenType::GET)) {
-        return parseGet();
-    } else if (match(TokenType::DELETE)) {
-        return parseDelete();
+        result = parseGet();
+        result["operation"] = "GET";
     } else if (match(TokenType::UPDATE)) {
-        return parseUpdate();
+        result = parseUpdate();
+        result["operation"] = "UPDATE";
+    } else if (match(TokenType::DELETE)) {
+        result = parseDelete();
+        result["operation"] = "DELETE";
     } else if (match(TokenType::CREATE)) {
-        parseCreate();
-        return -1;
-    } else if (t.type == TokenType::END_OF_FILE) {
-        return -1;
+        result = parseCreate();
+        result["operation"] = "CREATE";
     } else {
-        throw std::runtime_error("Comando no reconocido: " + t.lexeme);
+        throw std::runtime_error("Comando desconocido: " + t.lexeme);
     }
+    return result;
 }
 
-int Parser::parseInsert() {
-    int id = parseJson();
-    std::cout << "!Sintaxis de INSERT validada con exito!" << std::endl;
-    return id;
-}
+// retornan lo que parseJson extrae
+std::map<std::string, std::string> Parser::parseInsert() { return parseJson(); }
+std::map<std::string, std::string> Parser::parseGet()    { return parseJson(); }
+std::map<std::string, std::string> Parser::parseUpdate() { return parseJson(); }
+std::map<std::string, std::string> Parser::parseDelete() { return parseJson(); }
 
-int Parser::parseGet() {
-    int id = parseJson();
-    std::cout << "!Sintaxis de GET validada con exito!" << std::endl;
-    return id;
-}
-
-int Parser::parseDelete() {
-    return parseJson();
-}
-
-int Parser::parseUpdate() {
-    return parseJson();
-}
-
-void Parser::parseCreate() {
+std::map<std::string, std::string> Parser::parseCreate() {
+    std::map<std::string, std::string> data;
     Token nameToken = advance();
-    if (nameToken.type != TokenType::STRING) {
-        throw std::runtime_error("Se esperaba el nombre de la tabla entre comillas");
-    }
-    std::cout << "CREANDO tabla/archivo: " << nameToken.lexeme << std::endl;
+    if (nameToken.type != TokenType::STRING) throw std::runtime_error("Se esperaba nombre de tabla");
+    data["table_name"] = nameToken.lexeme;
+    return data;
 }
 
-int Parser::parseJson() {
+std::map<std::string, std::string> Parser::parseJson() {
+    std::map<std::string, std::string> data;
     consume(TokenType::LBRACE, "Se esperaba '{'");
-    consume(TokenType::ID, "Se esperaba el campo 'id'");
-    consume(TokenType::COLON, "Se esperaba ':'");
 
-    Token idToken = advance();
-    if (idToken.type != TokenType::NUMBER) {
-        throw std::runtime_error("El valor del ID debe ser un numero");
+    // Bucle para leer múltiples pares llave:valor
+    while (peek().type != TokenType::RBRACE) {
+        // 1. Leer la llave
+        Token keyToken = advance();
+        if (keyToken.type != TokenType::ID && keyToken.type != TokenType::STRING) {
+            throw std::runtime_error("Se esperaba una llave (string)");
+        }
+
+        consume(TokenType::COLON, "Se esperaba ':' tras la llave");
+
+        // 2. Leer el valor
+        Token valueToken = advance();
+        if (valueToken.type != TokenType::STRING && valueToken.type != TokenType::NUMBER) {
+            throw std::runtime_error("Se esperaba un valor (string o numero)");
+        }
+
+        // 3. Guardar en el mapa
+        data[keyToken.lexeme] = valueToken.lexeme;
+
+        // 4. Si hay una coma, seguimos; si no hay coma, el bucle termina si el sig es '}'
+        if (!match(TokenType::COMMA)) break;
     }
 
-    int idDetectado = std::stoi(idToken.lexeme);
-    std::cout << "ID detectado: " << idDetectado << std::endl;
-    
     consume(TokenType::RBRACE, "Se esperaba '}'");
-    return idDetectado;
+    return data;
 }
 
 // --- FUNCIONES AUXILIARES ---

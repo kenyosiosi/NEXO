@@ -1,40 +1,12 @@
 #include <iostream>
 #include <vector>
 #include <map>
-#include "../include/tokenizer.h"
-#include "../include/parser.h"
-#include "../include/StorageManager.h"
-#include "../include/IndexManager.h"
+#include "../include/query_engine/tokenizer.h"
+#include "../include/query_engine/parser.h"
+#include "../include/Storage/StorageManager.h"
+#include "../include/B-tree/IndexManager.h"
 
-//PRUEBA MANUAL DE LA BASE DE DATOS SEGURO LA BORRO DESPUES
-// void pruebaPersistencia() {
-//     // // 1. PRIMERA EJECUCIÓN (Inserción)
-//     // {
-//     //     IndexManager index("data/usuarios.idx", 3); // Grado pequeño para forzar splits
-//     //     RecordPointer ptr = {1, 10}; // Simulamos un puntero al archivo .bin
-//     //     index.insert(2300, ptr);
-//     //     index.insert(50, {1, 20});
-//     //     index.insert(150, {2, 5});
-//     //     std::cout << "Datos insertados. Cerrando sistema..." << std::endl;
-//     // } 
-//     // Al salir del bloque {}, el objeto index se destruye y el archivo se cierra.
-
-//     // 2. SEGUNDA EJECUCIÓN (Recuperación)
-//     {
-//         std::cout << "Reiniciando sistema... Leyendo desde disco." << std::endl;
-//         IndexManager index("data/usuarios.idx", 3);
-//         int porfaagarra=2300;
-//         RecordPointer result = index.search(porfaagarra);
-        
-//         if (result.page_id != -1) {
-//             std::cout << "exito Se encontro el ID "<<porfaagarra<<" en la pagina " << result.page_id << std::endl;
-//         } else {
-//             std::cout << "Error: No se encontró el registro." << std::endl;
-//         }
-//     }
-// }
-
-int main() {
+/*int main() {
     // 1. Inicializar los motores (estos abrirán los archivos .bin e .idx)
     StorageManager engine("data/database.bin"); 
     IndexManager index("data/usuarios.idx", 3); // <--- USA EL INDEX MANAGER
@@ -77,5 +49,43 @@ while (true) {
         std::cerr << "ERROR: " << e.what() << std::endl;
     }
 }
+    return 0;
+}*/
+
+int main() {
+    std::string input;
+    std::cout << "--- NEXO DATABASE SYSTEM ---" << std::endl;
+
+    while (true) {
+        std::cout << "\nNEXO > ";
+        std::getline(std::cin, input);
+
+        if (input == "exit") break;
+        if (input.empty()) continue;
+
+        try {
+            // 1. Tokenización
+            Tokenizer tokenizer(input);
+            std::vector<Token> tokens = tokenizer.tokenize();
+
+            // 2. Parsing 
+            Parser parser(tokens);
+            std::map<std::string, std::string> data = parser.parse();
+
+            // 3. Mostrar resultados
+            std::cout << "Operacion detectada: " << data["operation"] << std::endl;
+            std::cout << "Datos extraidos:" << std::endl;
+            
+            for (auto const& [key, val] : data) {
+                if (key != "operation") {
+                    std::cout << "  [" << key << "] : " << val << std::endl;
+                }
+            }
+
+        } catch (const std::exception& e) {
+            std::cerr << "ERROR DE SINTAXIS: " << e.what() << std::endl;
+        }
+    }
+
     return 0;
 }
