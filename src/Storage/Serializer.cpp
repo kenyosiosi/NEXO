@@ -28,21 +28,21 @@ std::map<std::string, std::string> Serializer::deserialize(const std::vector<cha
     std::map<std::string, std::string> data;
     if (buffer.size() < 2) return data; // Buffer demasiado pequeño
 
-    int pos = 0;
-    uint16_t keyCount = (uint8_t)buffer[pos] | ((uint8_t)buffer[pos + 1] << 8);
+    size_t pos = 0;
+    uint16_t keyCount = static_cast<uint8_t>(buffer[pos]) | (static_cast<uint8_t>(buffer[pos + 1]) << 8);
     pos += 2;
 
-    for (int i = 0; i < keyCount; ++i) 
+    for (uint16_t i = 0; i < keyCount; ++i) 
     {
         if (pos >= buffer.size()) break;
         
-        uint8_t keyLen = (uint8_t)buffer[pos++];
+        uint8_t keyLen = static_cast<uint8_t>(buffer[pos++]);
         if (pos + keyLen > buffer.size()) break; // Seguridad de límites
         std::string key(buffer.begin() + pos, buffer.begin() + pos + keyLen);
         pos += keyLen;
 
         if (pos >= buffer.size()) break;
-        uint8_t valLen = (uint8_t)buffer[pos++];
+        uint8_t valLen = static_cast<uint8_t>(buffer[pos++]);
         if (pos + valLen > buffer.size()) break;
         std::string val(buffer.begin() + pos, buffer.begin() + pos + valLen);
         pos += valLen;
