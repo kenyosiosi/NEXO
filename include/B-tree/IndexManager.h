@@ -33,6 +33,10 @@ public:
     IndexManager(StorageManager* sm, int degree);
     void insert(int k, RecordPointer p);
     RecordPointer search(int k);
+    
+    void remove(int id) {
+        this->insert(id, {-1, -1}); 
+    }
 };
 
 #endif

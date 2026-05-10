@@ -14,6 +14,8 @@ enum class TokenType {
     NUMBER,      
     
     // Símbolos de estructura JSON
+    LBRACKET,     //  [
+    RBRACKET,    //  ]
     LBRACE,      // {
     RBRACE,      // }
     COLON,       // :

@@ -31,17 +31,84 @@ std::map<std::string, std::string> Parser::parse() {
     return result;
 }
 
-// retornan lo que parseJson extrae
-std::map<std::string, std::string> Parser::parseInsert() { return parseJson(); }
-std::map<std::string, std::string> Parser::parseGet()    { return parseJson(); }
-std::map<std::string, std::string> Parser::parseUpdate() { return parseJson(); }
-std::map<std::string, std::string> Parser::parseDelete() { return parseJson(); }
+std::map<std::string, std::string> Parser::parseInsert() 
+    {
+    // Soportar: INSERT INTO "estudiantes" { ... }
+    if (peek().lexeme == "INTO") {
+        advance(); 
+    }
+
+    Token colToken = advance();
+    if (colToken.type != TokenType::STRING) {
+        throw std::runtime_error("Se esperaba el nombre de la coleccion (string)");
+    }
+
+    std::map<std::string, std::string> data = parseJson();
+    data["_table_target"] = colToken.lexeme; 
+    return data;
+}
 
 std::map<std::string, std::string> Parser::parseCreate() {
     std::map<std::string, std::string> data;
+    
+    // 1. Nombre de la colección
     Token nameToken = advance();
-    if (nameToken.type != TokenType::STRING) throw std::runtime_error("Se esperaba nombre de tabla");
-    data["table_name"] = nameToken.lexeme;
+    if (nameToken.type != TokenType::STRING) 
+        throw std::runtime_error("Se esperaba nombre de la coleccion");
+    data["_table_target"] = nameToken.lexeme;
+
+    // 2. Leer los campos obligatorios (Ej: ["id", "nombre"])
+    consume(TokenType::LBRACKET, "Se esperaba '[' para definir los campos");
+    
+    std::string fields = "";
+    while (peek().type != TokenType::RBRACKET) {
+        Token fieldToken = advance();
+        if (fieldToken.type != TokenType::STRING && fieldToken.type != TokenType::ID)
+            throw std::runtime_error("Los nombres de campos deben ser strings");
+        
+        fields += fieldToken.lexeme + ",";
+        
+        if (!match(TokenType::COMMA)) break;
+    }
+    consume(TokenType::RBRACKET, "Se esperaba ']'");
+    
+    data["_fields"] = fields;
+    return data;
+}
+
+std::map<std::string, std::string> Parser::parseGet() {
+    // 1. Extraer el nombre de la colección 
+    Token tableToken = advance(); 
+    if (tableToken.type != TokenType::STRING) {
+        throw std::runtime_error("Se esperaba el nombre de la coleccion para el GET");
+    }
+
+    // 2. Parsear el JSON del ID
+    std::map<std::string, std::string> data = parseJson();
+    
+    // 3. Guardar el nombre de la tabla para el main
+    data["_table_target"] = tableToken.lexeme; 
+    return data;
+}
+
+std::map<std::string, std::string> Parser::parseUpdate() {
+    Token tableToken = advance(); // Leer el nombre de la tabla primero
+    if (tableToken.type != TokenType::STRING) {
+        throw std::runtime_error("Se esperaba el nombre de la coleccion");
+    }
+    std::map<std::string, std::string> data = parseJson();
+    data["_table_target"] = tableToken.lexeme; 
+    return data;
+}
+
+std::map<std::string, std::string> Parser::parseDelete() {
+    Token tableToken = advance(); 
+    if (tableToken.type != TokenType::STRING) {
+        throw std::runtime_error("Se esperaba el nombre de la coleccion para el DELETE");
+    }
+
+    std::map<std::string, std::string> data = parseJson();
+    data["_table_target"] = tableToken.lexeme; 
     return data;
 }
 
@@ -60,17 +127,20 @@ std::map<std::string, std::string> Parser::parseJson() {
         consume(TokenType::COLON, "Se esperaba ':' tras la llave");
 
         // 2. Leer el valor
-        Token valueToken = advance();
-        if (valueToken.type != TokenType::STRING && valueToken.type != TokenType::NUMBER) {
-            throw std::runtime_error("Se esperaba un valor (string o numero)");
+        if (peek().type == TokenType::LBRACE) {
+            parseJson();
+            data[keyToken.lexeme] = "[Nested Object]"; 
+        } else {
+            Token valueToken = advance();
+            if (valueToken.type != TokenType::STRING && valueToken.type != TokenType::NUMBER) {
+                throw std::runtime_error("Se esperaba un valor (string o numero)");
+            }
+            data[keyToken.lexeme] = valueToken.lexeme;
         }
 
-        // 3. Guardar en el mapa
-        data[keyToken.lexeme] = valueToken.lexeme;
-
-        // 4. Si hay una coma, seguimos; si no hay coma, el bucle termina si el sig es '}'
         if (!match(TokenType::COMMA)) break;
     }
+    
 
     consume(TokenType::RBRACE, "Se esperaba '}'");
     return data;

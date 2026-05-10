@@ -1,72 +1,135 @@
 #include <iostream>
 #include <vector>
 #include <map>
+#include <fstream>
+#include <sstream>
 #include "../include/query_engine/tokenizer.h"
 #include "../include/query_engine/parser.h"
 #include "../include/Storage/StorageManager.h"
 #include "../include/B-tree/IndexManager.h"
 
+bool fileExists(const std::string& name) {
+    std::ifstream f(name.c_str());
+    return f.good();
+}
+
+struct SchemaInfo {
+    int nextId;
+    std::string fields;
+};
+
+SchemaInfo loadSchema(const std::string& tableName) {
+    std::ifstream f("data/" + tableName + ".schema");
+    SchemaInfo info = {1, ""};
+    if (f.is_open()) {
+        std::string idStr;
+        std::getline(f, idStr);
+        if (!idStr.empty()) info.nextId = std::stoi(idStr);
+        std::getline(f, info.fields);
+        f.close();
+    }
+    return info;
+}
+
+void saveSchema(const std::string& tableName, const SchemaInfo& info) {
+    std::ofstream f("data/" + tableName + ".schema");
+    f << info.nextId << "\n" << info.fields;
+    f.close();
+}
+
+bool validateSchema(const std::string& tableName, std::map<std::string, std::string>& dataToInsert) {
+    SchemaInfo info = loadSchema(tableName);
+    if (info.fields.empty()) return true; 
+    std::stringstream ss(info.fields);
+    std::string field;
+    while (std::getline(ss, field, ',')) {
+        if (!field.empty() && dataToInsert.find(field) == dataToInsert.end()) {
+            std::cerr << "Error de Esquema: Falta el campo '" << field << "'" << std::endl;
+            return false;
+        }
+    }
+    return true;
+}
+
 int main() {
-
-//  StorageManager ahora centraliza AMBOS archivos (.bin y .idx)
-StorageManager storage("data/nexo.bin", "data/nexo.idx"); 
-
-//  IndexManager ya no abre archivos, ahora recibe el puntero del storage
-IndexManager index(&storage, 3);
-    
-    std::cout << "--- NEXO DATABASE SYSTEM ---" << std::endl;
+    std::map<std::string, StorageManager*> storage_units;
+    std::map<std::string, IndexManager*> index_units;
+    std::cout << "--- NEXO DATABASE SYSTEM (Corrected CRUD) ---" << std::endl;
 
     while (true) {
         std::string input;
         std::cout << "\nNEXO > ";
         std::getline(std::cin, input);
-
         if (input == "exit") break;
         if (input.empty()) continue;
 
         try {
             Tokenizer tokenizer(input);
-            std::vector<Token> tokens = tokenizer.tokenize();
-            Parser parser(tokens);
-            
-            // El Parser devuelve el mapa de la consulta
+            Parser parser(tokenizer.tokenize());
             std::map<std::string, std::string> queryData = parser.parse();
             std::string op = queryData["operation"];
+            std::string tableName = queryData["_table_target"]; 
 
-            if (op == "INSERT") {
-                int id = std::stoi(queryData["id"]); 
+            if (storage_units.find(tableName) == storage_units.end() && fileExists("data/" + tableName + ".bin")) {
+                storage_units[tableName] = new StorageManager("data/"+tableName+".bin", "data/"+tableName+".idx");
+                index_units[tableName] = new IndexManager(storage_units[tableName], 3);
+            }
 
-                // 1. El StorageManager guarda el JSON y nos da el "puntero" (página y slot)
-                RecordPointer ptr = storage.insertRecord(queryData); 
-
-                // 2. El IndexManager guarda el ID y ese puntero en el B-Tree
-                index.insert(id, ptr); 
-                
-                std::cout << "Registro " << id << " insertado correctamente." << std::endl;
-            } 
-            else if (op == "GET") {
-                int id_a_buscar = std::stoi(queryData["id"]);
-
-                // 1. Buscamos en el índice para obtener la ubicación física
-                RecordPointer ptr = index.search(id_a_buscar);
-
-                if (ptr.page_id != -1) {
-                    // 2. Le pedimos al StorageManager que lea y deserialice esa ubicación
-                    std::map<std::string, std::string> result = storage.getRecord(ptr);
-
-                    std::cout << "--- Registro Encontrado ---" << std::endl;
-                    for (auto const& [key, val] : result) {
-                        if (key != "operation") { // No mostrar la operación interna
-                            std::cout << key << ": " << val << std::endl;
-                        }
-                    }
+            if (op == "CREATE") {
+                if (fileExists("data/" + tableName + ".bin")) {
+                    std::cout << "Coleccion ya existe." << std::endl;
                 } else {
-                    std::cout << "Error: El ID " << id_a_buscar << " no existe en la base de datos." << std::endl;
+                    storage_units[tableName] = new StorageManager("data/"+tableName+".bin", "data/"+tableName+".idx");
+                    index_units[tableName] = new IndexManager(storage_units[tableName], 3);
+                    saveSchema(tableName, {1, queryData["_fields"]});
+                    std::cout << "Coleccion '" << tableName << "' creada." << std::endl;
+                }
+            } 
+            else if (op == "INSERT") {
+                SchemaInfo info = loadSchema(tableName);
+                queryData["id"] = std::to_string(info.nextId);
+                if (!validateSchema(tableName, queryData)) continue;
+                
+                RecordPointer ptr = storage_units[tableName]->insertRecord(queryData);
+                index_units[tableName]->insert(info.nextId, ptr);
+                
+                info.nextId++;
+                saveSchema(tableName, info);
+                std::cout << "Insertado con ID: " << queryData["id"] << std::endl;
+            }
+            else if (op == "UPDATE") {
+                int id = std::stoi(queryData["id"]);
+                RecordPointer ptr = index_units[tableName]->search(id);
+                if (ptr.page_id != -1) {
+                    auto record = storage_units[tableName]->getRecord(ptr);
+                    for (auto const& [k, v] : queryData) {
+                        if (k != "operation" && k != "id" && k[0] != '_') record[k] = v;
+                    }
+                    // El nuevo insert sobrescribirá la entrada antigua en el B-Tree
+                    RecordPointer nPtr = storage_units[tableName]->insertRecord(record);
+                    index_units[tableName]->insert(id, nPtr);
+                    std::cout << "Registro " << id << " actualizado." << std::endl;
                 }
             }
-        } catch (const std::exception& e) {
-            std::cerr << "Error de ejecución: " << e.what() << std::endl;
-        }
+            else if (op == "GET") {
+                int id_buscar = std::stoi(queryData["id"]);
+                RecordPointer ptr = index_units[tableName]->search(id_buscar);
+                if (ptr.page_id != -1) {
+                    auto res = storage_units[tableName]->getRecord(ptr);
+                    if (res.count("id") && std::stoi(res["id"]) == id_buscar) {
+                        for (auto const& [k, v] : res) {
+                            if (k[0] != '_' && k != "operation") {
+                                std::cout << k << ": " << v << std::endl;
+                            }
+                        }
+                    } else { std::cout << "Registro eliminado o antiguo." << std::endl; }
+                } else { std::cout << "ID no encontrado." << std::endl; }
+            }
+            else if (op == "DELETE") {
+                index_units[tableName]->remove(std::stoi(queryData["id"]));
+                std::cout << "Eliminado." << std::endl;
+            }
+        } catch (const std::exception& e) { std::cerr << "Error: " << e.what() << std::endl; }
     }
     return 0;
 }

@@ -17,6 +17,8 @@ std::vector<Token> Tokenizer::tokenize() {
         }
         // Reconocimiento de símbolos básicos
         switch (c) {
+            case '[': tokens.push_back({TokenType::LBRACKET, "["}); advance(); break;
+            case ']': tokens.push_back({TokenType::RBRACKET, "]"}); advance(); break;
             case '{': tokens.push_back({TokenType::LBRACE, "{"}); advance(); break;
             case '}': tokens.push_back({TokenType::RBRACE, "}"}); advance(); break;
             case ':': tokens.push_back({TokenType::COLON, ":"}); advance(); break;
