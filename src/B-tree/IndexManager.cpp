@@ -6,10 +6,10 @@
 IndexManager::IndexManager(StorageManager* sm, int degree) 
     : storage(sm), t(degree) 
 {
-    // Le pedimos al storage la página 0 donde vive la cabecera
+    // Le pide al storage la página 0 donde vive la cabecera
     std::vector<char> buffer = storage->readIndexPage(0);
 
-    // Verificamos si es un archivo nuevo (buffer vacío o con ceros)
+    // Verifica si es un archivo nuevo (buffer vacío o con ceros)
     bool is_new = true;
     if (!buffer.empty()) {
         for (int i = 0; i < 12; i++) {
@@ -133,7 +133,7 @@ void IndexManager::insertNonFull(int page_id, int k, RecordPointer p_data) {
             splitChild(page_id, i, node.children[i]);
             readNode(page_id, node); 
 
-            // Después del split, la llave mediana subió. Verificamos si es nuestra llave.
+            // Después del split, la llave mediana subió. Verifico si es la llave.
             if (node.keys[i] == k) {
                 node.pointers[i] = p_data;
                 writeNode(page_id, node);

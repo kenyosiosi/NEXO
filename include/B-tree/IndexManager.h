@@ -5,11 +5,11 @@
 #include "../Core/Types.h"
 #include <vector>
 
-// Estructura del nodo en disco (ajustada a PAGE_SIZE de 4KB)
+// Estructura del nodo en disco (para PAGE_SIZE de 4KB)
 struct DiskNode {
     bool is_leaf;
     int n; // número de llaves actuales
-    int keys[200]; // Ajusta el tamaño según necesites
+    int keys[200]; 
     RecordPointer pointers[200]; // Referencias al .bin
     int children[201]; // Referencias a otras páginas del .idx
 };

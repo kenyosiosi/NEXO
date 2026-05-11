@@ -22,7 +22,7 @@ private:
     void initializePage(int id);
 
 public:
-    // El constructor ahora pide dos rutas
+    // El constructor pide dos rutas
     StorageManager(const std::string& data_path, const std::string& index_path);
 
     // Métodos para Datos

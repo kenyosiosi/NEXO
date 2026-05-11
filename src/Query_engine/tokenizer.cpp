@@ -1,4 +1,4 @@
-#include "../../include/query_engine/tokenizer.h"
+#include "../../include/Query_engine/tokenizer.h"
 #include <cctype>
 
 // Constructor: preparamos el string y el cursor
@@ -34,7 +34,7 @@ std::vector<Token> Tokenizer::tokenize() {
                 } else if (std::isalpha(c)) {
                     tokens.push_back(readIdentifier());
                 } else {
-                    // Si es un símbolo raro que no conocemos (ej: @, $)
+                    // Si es un símbolo raro que no se conoce (ej: @, $)
                     tokens.push_back({TokenType::UNKNOWN, std::string(1, c)});
                     advance();
                 }
@@ -70,7 +70,7 @@ Token Tokenizer::readString() {
     
     std::string value = "";
     
-    // Mientras no lleguemos al final del archivo y no encontremos la comilla de cierre
+    // Mientras no se llegue al final del archivo y no encuentre las comilla de cierre
     while (cursor < source.length() && peek() != '"') {
         value += advance(); // Guardamos la letra y avanzamos
     }

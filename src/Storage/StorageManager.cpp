@@ -17,7 +17,7 @@ StorageManager::StorageManager(const std::string& data_path, const std::string& 
     else 
     {
         loadMetadata();
-        // CRÍTICO: Cargar la página actual en memoria para evitar offsets negativos
+        // Cargar la página actual en memoria para evitar offsets negativos
         page_buffer = dataFile.readPage(current_page_id);
     }
 }
@@ -105,10 +105,6 @@ std::map<std::string, std::string> StorageManager::getRecord(RecordPointer point
     // El serializer preparará el mapa que luego imprimirás en consola
     return serializer.deserialize(record_bytes);
 }
-
-// ==========================================
-// NUEVAS FUNCIONES PARA EL INDEX MANAGER
-// ==========================================
 
 void StorageManager::writeIndexPage(int page_id, const std::vector<char>& data)
 {

@@ -23,7 +23,7 @@ void HeapFile::writePage(int page_id, const std::vector<char>& data)
 {
     if (data.size() != PAGE_SIZE) return;
 
-    // 1. CRÍTICO: Limpiar cualquier bandera de error (EOF) antes de escribir
+    // Limpiamos cualquier bandera de error (EOF) antes de escribir
     file.clear(); 
     
     std::streampos pos = static_cast<std::streampos>(page_id) * PAGE_SIZE;
@@ -41,7 +41,7 @@ std::vector<char> HeapFile::readPage(int pageId)
 {
     std::vector<char> buffer(PAGE_SIZE, 0); // Aseguramos que inicie en ceros
     
-    // 2. CRÍTICO: Limpiar banderas antes de leer por si lecturas previas fallaron
+    //  Limpiamos banderas antes de leer por si lecturas previas fallaron
     file.clear(); 
     
     file.seekg(pageId * PAGE_SIZE);

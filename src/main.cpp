@@ -3,8 +3,8 @@
 #include <map>
 #include <fstream>
 #include <sstream>
-#include "../include/query_engine/tokenizer.h"
-#include "../include/query_engine/parser.h"
+#include "../include/Query_engine/tokenizer.h"
+#include "../include/Query_engine/parser.h"
 #include "../include/Storage/StorageManager.h"
 #include "../include/B-tree/IndexManager.h"
 
