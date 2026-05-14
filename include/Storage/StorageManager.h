@@ -8,30 +8,23 @@
 #include <string>
 #include <vector>
 
-
 class StorageManager {
 private:
-    HeapFile dataFile;   // Para el .bin
-    HeapFile indexFile;  // Para el .idx
+    HeapFile dataFile;   
     int current_page_id;
     std::vector<char> page_buffer;
-    Serializer serializer;
 
     void saveMetadata();
     void loadMetadata();
     void initializePage(int id);
 
 public:
-    // El constructor pide dos rutas
-    StorageManager(const std::string& data_path, const std::string& index_path);
-
-    // Métodos para Datos
-    RecordPointer insertRecord(const std::map<std::string, std::string>& flat_map);
+    StorageManager(const std::string& data_path);
+    RecordPointer insertRecord(std::map<std::string, std::string>& record);
     std::map<std::string, std::string> getRecord(RecordPointer ptr);
-
-    // Métodos para el B-Tree (Índice)
-    void writeIndexPage(int page_id, const std::vector<char>& data);
-    std::vector<char> readIndexPage(int page_id);
+    int getLastPageId() { return current_page_id; } // para reconstruir índices
+    void logicalDelete(RecordPointer pointer);
+    std::vector<std::pair<RecordPointer, std::map<std::string, std::string>>> scanAll();
 };
 
 #endif
