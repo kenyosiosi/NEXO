@@ -55,11 +55,17 @@ Esto generará los archivos objeto en /obj y el ejecutable en /bin.
 
 El motor soporta una sintaxis inspirada en JSON:
 
--Crear Colección: CREATE "estudiantes" ["id", "nombre", "carrera"]
+-Crear Colección: CREATE "usuarios" {"fields": "id,nombre,edad"} (Sirve para inicializar el archivo usuarios.bin y su archivo .schema.).
 
--Insertar: INSERT INTO "estudiantes" {"id": 101, "nombre": "Rafael", "carrera": "Sistemas"}
+-Indices secundarios:INDEX "nombre" ON "usuarios" (Sirve para crear el archivo usuarios_nombre.idx e inicializar la cabecera del Árbol B para búsquedas rápidas por ese campo).
 
--Buscar: GET "estudiantes" {"id": 101}
+-Insertar: INSERT INTO "usuarios" {"nombre": "Keny", "edad": "21"}(Sirve para guardar un registro.También inserta a "Keny" si hay un indice secundario).
+
+-Buscar: GET FROM "usuarios" {"campo": "lo que buscas"}(Sirve para buscar el registro usando el índice que se le pase).
+
+-Actualizar: UPDATE "usuarios" SET {"edad": "22"} WHERE {"id": "1"}(Sirve para aplicar el borrado lógico al registro y crear uno nuevo al final del archivo físico con la edad cambiada a 22).
+
+-Borrar: DELETE FROM "usuarios" WHERE {"id": "2"} (Sirve para aplicar un Tombstone (tamaño = -1) al registro de Rafael, dejándolo inaccesible para futuras consultas).
 
 Autores:
 
