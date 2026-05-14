@@ -24,11 +24,35 @@ std::map<std::string, std::string> Parser::parse() {
     } else if (match(TokenType::UPDATE)) {
         result = parseUpdate();
         result["operation"] = "UPDATE";
-    } else {
+    } else if (match(TokenType::SCAN)) {
+        std::map<std::string, std::string> data;
+        // Captura el nombre de la colección
+        Token tableToken = consume(TokenType::STRING, "Se esperaba el nombre de la coleccion despues de SCAN");
+        data["_table_target"] = tableToken.lexeme;
+        data["operation"] = "SCAN";
+        return data;
+        }else if (match(TokenType::DROP)) {
+            // Esperamos el nombre de la colección entre comillas
+            Token tableToken = consume(TokenType::STRING, "Se esperaba el nombre de la coleccion");
+            result["_table_target"] = tableToken.lexeme;
+            result["operation"] = "DROP";
+            } else if (match(TokenType::DEFINE)) {
+                Token tableToken = consume(TokenType::STRING, "Se esperaba el nombre de la coleccion");
+                result["_table_target"] = tableToken.lexeme;
+                result["operation"] = "DEFINE";
+                    }   else if (match(TokenType::STATS)) {
+                        // Consumimos el nombre de la tabla (ej: "productos")
+                        Token tableToken = consume(TokenType::STRING, "Se esperaba el nombre de la coleccion para STATS");
+                        
+                        result["operation"] = "STATS";
+                        result["_table_target"] = tableToken.lexeme;
+                        return result;
+                        } else {
         throw std::runtime_error("Comando no reconocido: " + t.lexeme);
     }
     return result;
 }
+
 
 std::map<std::string, std::string> Parser::parseInsert() {
     std::map<std::string, std::string> data;

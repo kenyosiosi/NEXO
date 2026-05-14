@@ -5,7 +5,7 @@
 #include <vector>
 
 enum class TokenType {
-    CREATE, INSERT, GET, DELETE, UPDATE,
+    CREATE, INSERT, GET, DELETE, UPDATE, SCAN, DROP, DEFINE, STATS,
     INDEX, ON, SET, INTO, FROM, WHERE, // <-- Añadidos los faltantes
     ID, STRING, NUMBER,
     LBRACKET, RBRACKET, LBRACE, RBRACE, COLON, COMMA,

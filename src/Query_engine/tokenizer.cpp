@@ -60,7 +60,10 @@ Token Tokenizer::readIdentifier() {
     if (value == "SET")    return {TokenType::SET, value};    
     if (value == "WHERE")  return {TokenType::WHERE, value};    
     if (value == "INTO")   return {TokenType::INTO, value};    
-    if (value == "FROM")   return {TokenType::FROM, value};    
-    
+    if (value == "FROM")   return {TokenType::FROM, value}; 
+    if (value == "SCAN")   return {TokenType::SCAN, value};
+    if (value == "DROP") return {TokenType::DROP, value};
+    if (value == "DEFINE") return {TokenType::DEFINE, value};
+    if (value == "STATS") return {TokenType::STATS, value};
     return {TokenType::STRING, value}; 
 }
