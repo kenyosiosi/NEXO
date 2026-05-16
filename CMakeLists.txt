@@ -30,6 +30,7 @@ include_directories(
 # --- FUENTES DEL PROYECTO ---
 set(NEXO_SOURCES
     src/main.cpp
+    src/Storage/HeapFile.cpp
     src/Storage/Serializer.cpp
     src/Storage/StorageManager.cpp
     src/B-tree/IndexManager.cpp
