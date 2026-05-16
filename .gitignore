@@ -1,10 +1,57 @@
-# Ejecutables
-*.exe
-app.exe
-
-# Carpetas de compilación
+# --- NEXO ENGINE: Archivos de Compilación ---
+build/
 bin/
 obj/
+out/
 
-# Archivos temporales de VS Code
+# --- Artefactos de CMake ---
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# --- Ejecutables y Librerías (Windows/Linux) ---
+*.exe
+*.dll
+*.so
+*.a
+*.lib
+*.pdb
+*.ilk
+*.exp
+
+# --- Dependencias Externas ---
+# No subimos las carpetas que descargan setup_win.sh y setup_linux.sh
+libs/SFML-2.6.1/
+libs/imgui/
+libs/imgui-sfml/
+# Si quieres ignorar TODO dentro de libs excepto tus propios archivos:
+# libs/*
+
+# --- Archivos de Datos del Motor ---
+# Ignoramos los datos generados en runtime (.bin, .idx, .schema)
+# Pero mantenemos la carpeta 'data' usando un .gitkeep si lo deseas
+data/*.bin
+data/*.idx
+data/*.schema
+# Opcional: Si quieres que la carpeta data se suba vacía, crea un archivo .gitkeep dentro
+# y comenta la línea de abajo.
+# data/
+
+# --- IDEs y Editores ---
 .vscode/
+.vs/
+*.user
+*.suo
+*.sln
+*.vcxproj
+*.filters
+.idea/
+*.swp
+*.swo
+
+# --- Otros ---
+.DS_Store
+Thumbs.db
+*.log

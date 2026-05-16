@@ -152,3 +152,52 @@ void IndexManager::insertNonFull(int page_id, const std::string& key, RecordPoin
         insertNonFull(node.children[i], key, ptr);
     }
 }
+
+RecordPointer IndexManager::search(int page_id, const std::string& key) {
+    if (page_id == -1) return {-1, -1}; // No encontrado
+
+    DiskNode node = {};
+    readNode(page_id, node);
+
+    int i = 0;
+    while (i < node.n && key > std::string(node.keys[i].value)) {
+        i++;
+    }
+
+    if (i < node.n && key == std::string(node.keys[i].value)) {
+        return node.pointers[i]; // ¡Encontrado!
+    }
+
+    if (node.is_leaf) {
+        return {-1, -1}; // No está en el árbol
+    }
+
+    return search(node.children[i], key); // Buscar en el hijo
+}
+
+// Sobrecarga pública para facilitar el uso
+RecordPointer IndexManager::findOne(const std::string& key) {
+    return findOneRecursive(rootPageId, key);
+}
+
+RecordPointer IndexManager::findOneRecursive(int page_id, const std::string& key) {
+    if (page_id == -1) return {-1, -1};
+
+    DiskNode node = {};
+    readNode(page_id, node);
+
+    int i = 0;
+    while (i < node.n && key > std::string(node.keys[i].value)) {
+        i++;
+    }
+
+    if (i < node.n && key == std::string(node.keys[i].value)) {
+        return node.pointers[i];
+    }
+
+    if (node.is_leaf) {
+        return {-1, -1};
+    }
+
+    return findOneRecursive(node.children[i], key);
+}

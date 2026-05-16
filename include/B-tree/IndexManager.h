@@ -40,11 +40,14 @@ private:
     void splitChild(int parent_id, int i, int child_id);
     void insertNonFull(int page_id, const std::string& key, RecordPointer ptr);
     void searchRecursive(int page_id, const std::string& k, std::vector<RecordPointer>& results);
+    RecordPointer search(int page_id, const std::string& key);
+    RecordPointer findOneRecursive(int page_id, const std::string& key);
 
 public:
     IndexManager(const std::string& index_path, int degree);
     void insert(const std::string& k, RecordPointer p_data);
     std::vector<RecordPointer> search(const std::string& k);
     std::vector<RecordPointer> searchRecursive(int page_id, const std::string& k);
+    RecordPointer findOne(const std::string& key);
 };
 #endif
