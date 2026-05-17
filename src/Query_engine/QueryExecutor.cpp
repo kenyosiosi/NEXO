@@ -1,6 +1,7 @@
 #include "../../include/Query_engine/QueryExecutor.h"
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 
 namespace fs = std::filesystem;
 
@@ -10,6 +11,7 @@ QueryExecutor::QueryExecutor(std::map<std::string, StorageManager*>& storage,
     : storage_units(storage), index_map(indices), registros_sucios(sucios) {}
 
 std::string QueryExecutor::formatRecord(const std::map<std::string, std::string>& record) {
+    if (record.empty()) return "{ }";
     std::string out = "{ ";
     for (auto const& [k, v] : record) out += "\"" + k + "\": \"" + v + "\", ";
     if (out.length() > 2) out.erase(out.length() - 2);
@@ -28,22 +30,15 @@ std::string QueryExecutor::obtenerReporteMetricas(const std::string& target) {
     double ratio = (totales > 0) ? (static_cast<double>(sucios) / totales) * 100.0 : 0.0;
     size_t file_size = fs::exists(filepath) ? fs::file_size(filepath) : 0;
 
-    ss << "\n--- MÉTRICAS DE ESTRUCTURA (" << target << ") ---\n";
+    ss << "\n--- MÉTRICAS DE " << target << " ---\n";
     ss << " Registros Vivos:    " << vivos << "\n";
     ss << " Registros Sucios:   " << sucios << "\n";
     ss << " Fragmentación:      " << ratio << " %\n";
-    ss << " Tamaño en disco:    " << file_size << " bytes\n";
-    
-    if (totales > 0) {
-        ss << " Promedio/Registro:  " << (file_size / totales) << " bytes\n";
-    }
-    ss << "--------------------------------------";
+    ss << " Tamaño en disco:    " << file_size << " bytes";
 
-    // Si supera el umbral del 30%, avisamos a la UI que requiere compactación
     if (vivos >= 100 && ratio >= 30.0) {
-        ss << "\n[ALERTA] ¡Índice de fragmentación crítico! Se sugiere autoCompact().";
+        ss << "\n[ALERTA] Índice de fragmentación crítico. Sugerencia: COMPACT.";
     }
-
     return ss.str();
 }
 
@@ -55,92 +50,207 @@ std::string QueryExecutor::execute(std::map<std::string, std::string> query_ast)
     std::string op = query_ast["operation"];
     std::string target = query_ast["_table_target"];
 
+    // 1. CREATE
     if (op == "CREATE") {
-        return "Comando CREATE detectado para '" + target + "'. Configure desde el panel visual.";
+        if (storage_units.count(target)) return "[Error] La colección '" + target + "' ya existe.";
+        
+        std::string user_fields = query_ast.count("_fields") ? query_ast["_fields"] : "";
+        std::string full_fields = "id"; 
+        if (!user_fields.empty()) full_fields += "," + user_fields;
+
+        std::ofstream f("data/" + target + ".schema");
+        if(f.is_open()) { f << "1\n" << full_fields; f.close(); }
+
+        storage_units[target] = new StorageManager("data/" + target + ".bin");
+        index_map[target]["id"] = new IndexManager("data/" + target + "_id.idx", 3);
+        registros_sucios[target] = 0;
+
+        return "Colección '" + target + "' creada con éxito. Índice 'id' autogenerado.";
     }
 
     if (storage_units.find(target) == storage_units.end()) {
         return "[Error] La colección '" + target + "' no existe.";
     }
 
+    // 2. DEFINE
+    if (op == "DEFINE") {
+        std::ifstream f("data/" + target + ".schema");
+        if (!f.is_open()) return "[Error] No se encontró el esquema de '" + target + "'.";
+        std::string nextId, fields;
+        std::getline(f, nextId);
+        std::getline(f, fields);
+        f.close();
+        
+        std::string index_list = "";
+        for(auto const& [idx_name, idx_ptr] : index_map[target]) index_list += idx_name + ", ";
+        if (!index_list.empty()) index_list.erase(index_list.length() - 2);
+
+        return "Estructura de '" + target + "':\nCampos: " + fields + "\nSiguiente ID: " + nextId + "\nÍndices Activos: [" + index_list + "]";
+    }
+
+    // 3. INDEX
+    if (op == "INDEX") {
+        std::string field = query_ast["field"];
+        if (index_map[target].count(field)) return "[Error] El índice para '" + field + "' ya existe.";
+        
+        index_map[target][field] = new IndexManager("data/" + target + "_" + field + ".idx", 3);
+        auto records = storage_units[target]->scanAll();
+        for (auto& row : records) {
+            if (row.second.count(field)) {
+                index_map[target][field]->insert(row.second[field], row.first);
+            }
+        }
+        return "Índice secundario sobre '" + field + "' creado exitosamente.";
+    }
+
+    // 4. DROP
+    if (op == "DROP") {
+        delete storage_units[target];
+        storage_units.erase(target);
+        
+        for (auto& [field, mgr] : index_map[target]) {
+            delete mgr;
+            fs::remove("data/" + target + "_" + field + ".idx");
+        }
+        index_map.erase(target);
+        registros_sucios.erase(target);
+
+        fs::remove("data/" + target + ".bin");
+        fs::remove("data/" + target + ".schema");
+
+        return "Colección '" + target + "' eliminada por completo.";
+    }
+
+    // 5. STATS
+    if (op == "STATS") {
+        return obtenerReporteMetricas(target);
+    }
+
+    // 6. SCAN
     if (op == "SCAN") {
         auto records = storage_units[target]->scanAll();
         if (records.empty()) return "La colección '" + target + "' está vacía.";
-        
         std::stringstream ss;
-        ss << records.size() << " documentos encontrados en '" << target << "':\n";
-        for (auto& row : records) {
-            ss << "  " << formatRecord(row.second) << "\n";
-        }
+        ss << records.size() << " documentos encontrados:\n";
+        for (auto& row : records) ss << "  " << formatRecord(row.second) << "\n";
         return ss.str();
     } 
     
+    // 7. INSERT
     else if (op == "INSERT") {
         std::map<std::string, std::string> payload = query_ast;
         payload.erase("operation");
         payload.erase("_table_target");
 
-        RecordPointer ptr = storage_units[target]->insertRecord(payload);
+        int nextId = 1;
+        std::string fields = "";
+        std::ifstream f_in("data/" + target + ".schema");
+        if (f_in.is_open()) {
+            std::string idStr;
+            std::getline(f_in, idStr);
+            if (!idStr.empty()) {
+                try { nextId = std::stoi(idStr); } catch(...) {}
+            }
+            std::getline(f_in, fields);
+            f_in.close();
+        }
 
-        // Indexar dinámicamente si los índices existen
+        // LÓGICA INTELIGENTE: Si el usuario forzó un ID, lo respetamos y actualizamos la secuencia
+        if (payload.count("id")) {
+            try {
+                int provided = std::stoi(payload["id"]);
+                if (provided >= nextId) nextId = provided + 1;
+            } catch(...) {
+                payload["id"] = std::to_string(nextId);
+                nextId++;
+            }
+        } else {
+            payload["id"] = std::to_string(nextId);
+            nextId++;
+        }
+
+        RecordPointer ptr = storage_units[target]->insertRecord(payload);
         for (auto const& [field, idx] : index_map[target]) {
             if (payload.count(field)) idx->insert(payload[field], ptr);
         }
+
+        std::ofstream f_out("data/" + target + ".schema");
+        if (f_out.is_open()) { f_out << nextId << "\n" << fields; f_out.close(); }
         
-        return "Ok. Registro insertado exitosamente.\n" + obtenerReporteMetricas(target);
+        return "Ok. Registro insertado exitosamente con ID: " + payload["id"];
     }
 
+    // 8. GET
     else if (op == "GET") {
-        if (!query_ast.count("id") || !index_map[target].count("id")) {
-            return "[Error] GET requiere filtrar por un campo 'id' indexado.";
+        std::string search_field = "";
+        std::string search_value = "";
+        bool index_found = false;
+
+        // Buscamos entre los campos de la consulta uno que tenga un índice
+        for (auto const& [field, value] : query_ast) {
+            // Ignorar metadatos internos del motor
+            if (field == "operation" || field == "_table_target") continue;
+
+            if (index_map[target].count(field)) {
+                search_field = field;
+                search_value = value;
+                index_found = true;
+                break; // Usamos el primer índice que coincida
+            }
         }
 
-        RecordPointer ptr = index_map[target]["id"]->findOne(query_ast["id"]);
-        if (ptr.page_id != -1) {
-            return "Documento encontrado:\n" + formatRecord(storage_units[target]->getRecord(ptr));
+        if (!index_found) {
+            return "[Error] No se encontró un índice para los campos proporcionados. "
+                   "Crea uno con: INDEX \"campo\" ON \"" + target + "\"";
         }
-        return "Documento no encontrado (ID: " + query_ast["id"] + ").";
+
+        // Realizar la búsqueda usando el índice dinámico encontrado
+        RecordPointer ptr = index_map[target][search_field]->findOne(search_value);
+        
+        if (ptr.page_id != -1) {
+            std::map<std::string, std::string> record = storage_units[target]->getRecord(ptr);
+            return "Documento encontrado (vía índice '" + search_field + "'):\n" + formatRecord(record);
+        }
+        
+        return "Documento no encontrado con " + search_field + ": '" + search_value + "'.";
     }
 
+    // 9. DELETE
     else if (op == "DELETE") {
-        if (!query_ast.count("id") || !index_map[target].count("id")) {
-            return "[Error] DELETE requiere especificar el 'id'.";
-        }
-
+        if (!query_ast.count("id")) return "[Error] DELETE requiere especificar el 'id'.";
+        
         RecordPointer ptr = index_map[target]["id"]->findOne(query_ast["id"]);
         if (ptr.page_id != -1) {
             storage_units[target]->logicalDelete(ptr);
-            registros_sucios[target]++; // Incrementar contador de fragmentación
-            
-            return "Documento eliminado lógicamente.\n" + obtenerReporteMetricas(target);
+            registros_sucios[target]++; 
+            return "Documento (ID: " + query_ast["id"] + ") eliminado lógicamente.";
         }
         return "No se encontró el documento para eliminar.";
     }
 
+    // 10. UPDATE
     else if (op == "UPDATE") {
-        if (!query_ast.count("id") || !index_map[target].count("id")) {
-            return "[Error] UPDATE requiere un 'id' válido.";
-        }
-
+        if (!query_ast.count("id")) return "[Error] UPDATE requiere un 'id' válido.";
+        
         RecordPointer ptr = index_map[target]["id"]->findOne(query_ast["id"]);
         if (ptr.page_id == -1) return "No se encontró el documento a modificar.";
 
-        // Obtener datos actuales y mezclar modificaciones de los campos modificados (_set_)
         std::map<std::string, std::string> data = storage_units[target]->getRecord(ptr);
+        if (data.empty()) return "El documento ya fue eliminado previamente.";
+
         for (auto const& [key, val] : query_ast) {
-            if (key.substr(0, 5) == "_set_") {
-                data[key.substr(5)] = val;
-            }
+            if (key.substr(0, 5) == "_set_") data[key.substr(5)] = val;
         }
 
-        // Out-of-place update (Estrategia NoSQL para registros variables)
         storage_units[target]->logicalDelete(ptr);
         registros_sucios[target]++; 
 
         RecordPointer new_ptr = storage_units[target]->insertRecord(data);
-        index_map[target]["id"]->insert(data["id"], new_ptr);
+        for (auto const& [field, idx] : index_map[target]) {
+            if (data.count(field)) idx->insert(data[field], new_ptr); 
+        }
 
-        return "Documento actualizado correctamente.\n" + obtenerReporteMetricas(target);
+        return "Documento actualizado correctamente.";
     }
 
     return "[Error] Operación no soportada: " + op;

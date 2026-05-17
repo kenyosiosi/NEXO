@@ -25,34 +25,33 @@ std::map<std::string, std::string> Parser::parse() {
         result = parseUpdate();
         result["operation"] = "UPDATE";
     } else if (match(TokenType::SCAN)) {
-        std::map<std::string, std::string> data;
-        // Captura el nombre de la colección
         Token tableToken = consume(TokenType::STRING, "Se esperaba el nombre de la coleccion despues de SCAN");
-        data["_table_target"] = tableToken.lexeme;
-        data["operation"] = "SCAN";
-        return data;
-        }else if (match(TokenType::DROP)) {
-            // Esperamos el nombre de la colección entre comillas
-            Token tableToken = consume(TokenType::STRING, "Se esperaba el nombre de la coleccion");
-            result["_table_target"] = tableToken.lexeme;
-            result["operation"] = "DROP";
-            } else if (match(TokenType::DEFINE)) {
-                Token tableToken = consume(TokenType::STRING, "Se esperaba el nombre de la coleccion");
-                result["_table_target"] = tableToken.lexeme;
-                result["operation"] = "DEFINE";
-                    }   else if (match(TokenType::STATS)) {
-                        // Consumimos el nombre de la tabla (ej: "productos")
-                        Token tableToken = consume(TokenType::STRING, "Se esperaba el nombre de la coleccion para STATS");
-                        
-                        result["operation"] = "STATS";
-                        result["_table_target"] = tableToken.lexeme;
-                        return result;
-                        } else {
+        result["_table_target"] = tableToken.lexeme;
+        result["operation"] = "SCAN";
+    } else if (match(TokenType::DROP)) {
+        Token tableToken = consume(TokenType::STRING, "Se esperaba el nombre de la coleccion despues de DROP");
+        result["_table_target"] = tableToken.lexeme;
+        result["operation"] = "DROP";
+    } else if (match(TokenType::DEFINE)) {
+        Token tableToken = consume(TokenType::STRING, "Se esperaba el nombre de la coleccion despues de DEFINE");
+        result["_table_target"] = tableToken.lexeme;
+        result["operation"] = "DEFINE";
+    } else if (match(TokenType::STATS)) {
+        Token tableToken = consume(TokenType::STRING, "Se esperaba el nombre de la coleccion para STATS");
+        result["_table_target"] = tableToken.lexeme;
+        result["operation"] = "STATS";
+    } else if (match(TokenType::INDEX)) {
+        Token field = consume(TokenType::STRING, "Se esperaba el campo a indexar");
+        consume(TokenType::ON, "Se esperaba 'ON'");
+        Token table = consume(TokenType::STRING, "Se esperaba el nombre de la coleccion");
+        result["operation"] = "INDEX";
+        result["field"] = field.lexeme;
+        result["_table_target"] = table.lexeme;
+    } else {
         throw std::runtime_error("Comando no reconocido: " + t.lexeme);
     }
     return result;
 }
-
 
 std::map<std::string, std::string> Parser::parseInsert() {
     std::map<std::string, std::string> data;
@@ -99,27 +98,23 @@ std::map<std::string, std::string> Parser::parseUpdate() {
 
 std::map<std::string, std::string> Parser::parseCreate() {
     std::map<std::string, std::string> data;
-    if (match(TokenType::INDEX)) {
-        Token field = consume(TokenType::STRING, "Se esperaba campo a indexar");
-        consume(TokenType::ON, "Se esperaba 'ON'");
-        Token table = consume(TokenType::STRING, "Se esperaba nombre de tabla");
-        data["operation"] = "CREATE_INDEX";
-        data["_table_target"] = table.lexeme;
-        data["field"] = field.lexeme;
-    } else {
-        Token table = consume(TokenType::STRING, "Se esperaba nombre de coleccion");
-        data["_table_target"] = table.lexeme;
-        std::map<std::string, std::string> body;
-        parseJson(body);
-        if (body.count("fields")) data["_fields"] = body["fields"];
-    }
+    Token table = consume(TokenType::STRING, "Se esperaba nombre de coleccion");
+    data["_table_target"] = table.lexeme;
+    std::map<std::string, std::string> body;
+    parseJson(body);
+    if (body.count("fields")) data["_fields"] = body["fields"];
     return data;
 }
 
 std::map<std::string, std::string>& Parser::parseJson(std::map<std::string, std::string>& data) {
     consume(TokenType::LBRACE, "Se esperaba '{'");
     while (peek().type != TokenType::RBRACE) {
-        Token key = consume(TokenType::STRING, "Se esperaba llave");
+        // Permitimos que la llave sea un string o un identificador sin comillas
+        Token key = advance();
+        if (key.type == TokenType::UNKNOWN && key.lexeme.empty()) {
+            throw std::runtime_error("Fin de entrada inesperado dentro del JSON");
+        }
+        
         consume(TokenType::COLON, "Se esperaba ':'");
         if (peek().type == TokenType::LBRACE) {
             std::map<std::string, std::string> nested;
