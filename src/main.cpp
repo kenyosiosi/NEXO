@@ -122,6 +122,20 @@ int main() {
     asegurarCarpetaData();
     sf::RenderWindow window(sf::VideoMode(1280, 720), "NEXO Engine - Workspace");
     window.setFramerateLimit(60);
+
+    sf::Image icon;
+    // Primero intenta buscar una carpeta atrás (por si ejecutas desde build)
+    if (icon.loadFromFile("../assets/nexo_logo.png")) {
+        window.setIcon(icon.getSize().x, icon.getSize().y, icon.getPixelsPtr());
+    } 
+    // Si falla, intenta buscar de forma directa (por si ejecutas desde la raíz)
+    else if (icon.loadFromFile("assets/nexo_logo.png")) {
+        window.setIcon(icon.getSize().x, icon.getSize().y, icon.getPixelsPtr());
+    } 
+    else {
+        std::cout << "[Aviso] No se pudo encontrar el archivo nexo_logo.png en ninguna ruta." << std::endl;
+    }
+
     if (!ImGui::SFML::Init(window)) return -1;
 
     std::map<std::string, StorageManager*> storage_units;

@@ -44,7 +44,7 @@ for dll in "${FILES[@]}"; do
         else
             echo "⚠ $dll no encontrada en el sistema. Descargando versión genérica..."
             # Link de respaldo para descargar DLLs de runtime comunes
-            curl -L -o "build/$dll" "https://github.com/brechtsanders/winlibs_mingw/raw/master/bin/$dll" 2>/dev/null
+            curl -k -L -o "build/$dll" "https://github.com/brechtsanders/winlibs_mingw/raw/master/bin/$dll" 2>/dev/null
         fi
     fi
 done

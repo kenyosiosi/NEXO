@@ -47,6 +47,20 @@ set(IMGUI_SOURCES
     libs/imgui-sfml/imgui-SFML.cpp
 )
 
+# === Agregar el icono solo si compilamos en Windows ===
+if(WIN32)
+    list(APPEND NEXO_SOURCES resources.rc)
+endif()
+# =============================================================
+
+set(IMGUI_SOURCES
+    libs/imgui/imgui.cpp
+    libs/imgui/imgui_draw.cpp
+    libs/imgui/imgui_tables.cpp 
+    libs/imgui/imgui_widgets.cpp
+    libs/imgui-sfml/imgui-SFML.cpp
+)
+
 # --- EJECUTABLE ---
 add_executable(${PROJECT_NAME} ${NEXO_SOURCES} ${IMGUI_SOURCES})
 
