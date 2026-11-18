@@ -53,11 +53,12 @@ std::string QueryExecutor::execute(std::map<std::string, std::string> query_ast)
     // 1. CREATE
     if (op == "CREATE") {
         if (storage_units.count(target)) return "[Error] La colección '" + target + "' ya existe.";
-        
+
         std::string user_fields = query_ast.count("_fields") ? query_ast["_fields"] : "";
-        std::string full_fields = "id"; 
+        std::string full_fields = "id";
         if (!user_fields.empty()) full_fields += "," + user_fields;
 
+        if (!fs::exists("data")) fs::create_directory("data");
         std::ofstream f("data/" + target + ".schema");
         if(f.is_open()) { f << "1\n" << full_fields; f.close(); }
 
