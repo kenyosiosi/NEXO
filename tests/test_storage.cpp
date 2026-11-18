@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <stdexcept>
 #include <string>
 
 namespace fs = std::filesystem;
@@ -67,6 +68,24 @@ TEST_CASE("Serializer: truncated and empty buffers are handled safely") {
 
     const std::vector<char> empty;
     CHECK(Serializer::deserialize(empty).empty());
+}
+
+TEST_CASE("Serializer: lengths pointing outside the buffer never read past it") {
+    // One key announced, but with a key length that swallows the rest of the
+    // buffer (and beyond). Must not crash and must not read out of bounds.
+    std::vector<char> lying = { 0x01, 0x00,                                // 1 key
+                                static_cast<char>(0xFF), static_cast<char>(0xFF),
+                                0x00, 0x00, 0x00, 0x00 };                  // keyLen = 65535
+    CHECK_NOTHROW(Serializer::deserialize(lying));
+    CHECK(Serializer::deserialize(lying).empty());
+
+    // Same idea for the value length.
+    std::vector<char> lying_value = { 0x01, 0x00,
+                                      0x01, 0x00, 0x00, 0x00, 'a',         // key "a"
+                                      static_cast<char>(0xFF), static_cast<char>(0xFF),
+                                      static_cast<char>(0xFF), 0x00 };     // valLen huge
+    CHECK_NOTHROW(Serializer::deserialize(lying_value));
+    CHECK(Serializer::deserialize(lying_value).empty());
 }
 
 TEST_CASE("StorageManager: insert and read back records") {
@@ -131,4 +150,28 @@ TEST_CASE("StorageManager: records survive a close/reopen cycle") {
         CHECK(all[1].second.at("id") == "2");
         CHECK(all[2].second.at("id") == "3");
     }
+}
+
+TEST_CASE("StorageManager: corrupt or out-of-range pointers are rejected safely") {
+    clean("nexotest_badptr");
+    StorageManager sm(kDataDir + "/nexotest_badptr.bin");
+    sm.insertRecord(makeRecord("1", "a", "1"));
+
+    CHECK(sm.getRecord({ -1, 0 }).empty());
+    CHECK(sm.getRecord({ 1, -5 }).empty());
+    CHECK(sm.getRecord({ 1, 999999 }).empty());  // slot fuera de la página
+    CHECK(sm.getRecord({ 987654, 0 }).empty());  // página inexistente
+}
+
+TEST_CASE("StorageManager: a record that cannot fit any page is rejected") {
+    clean("nexotest_huge");
+    StorageManager sm(kDataDir + "/nexotest_huge.bin");
+
+    const std::string huge_payload(PAGE_SIZE, 'x'); // > 4072 bytes útiles
+    const std::map<std::string, std::string> huge = { { "blob", huge_payload } };
+
+    CHECK_THROWS_AS(sm.insertRecord(huge), std::runtime_error);
+    // La colección sigue operativa después del rechazo.
+    const RecordPointer ok = sm.insertRecord(makeRecord("1", "a", "1"));
+    CHECK(sm.getRecord(ok).at("id") == "1");
 }

@@ -32,32 +32,34 @@ std::map<std::string, std::string> Serializer::deserialize(const std::vector<cha
     if (buffer.size() < 2) return data;
 
     size_t pos = 0;
-    uint16_t keyCount = static_cast<uint8_t>(buffer[pos]) | (static_cast<uint8_t>(buffer[pos + 1]) << 8);
+    const uint16_t keyCount = static_cast<uint8_t>(buffer[pos]) | (static_cast<uint8_t>(buffer[pos + 1]) << 8);
     pos += 2;
 
     for (uint16_t i = 0; i < keyCount; ++i) {
-        if (pos >= buffer.size()) break;
-
-        // Leer longitud de la llave (4 bytes)
-        uint32_t keyLen = static_cast<uint8_t>(buffer[pos]) |
-                          (static_cast<uint8_t>(buffer[pos+1]) << 8) |
-                          (static_cast<uint8_t>(buffer[pos+2]) << 16) |
-                          (static_cast<uint8_t>(buffer[pos+3]) << 24);
+        // Un buffer corrupto puede anunciar longitudes que sobrepasan su
+        // propio tamaño: se descarta el resto sin leer fuera de los límites.
+        if (pos + 4 > buffer.size()) break;
+        const uint32_t keyLen = static_cast<uint8_t>(buffer[pos]) |
+                                (static_cast<uint8_t>(buffer[pos+1]) << 8) |
+                                (static_cast<uint8_t>(buffer[pos+2]) << 16) |
+                                (static_cast<uint8_t>(buffer[pos+3]) << 24);
         pos += 4;
-        
+        if (pos + keyLen > buffer.size()) break;
+
         std::string key(buffer.begin() + pos, buffer.begin() + pos + keyLen);
         pos += keyLen;
 
-        // Leer longitud del valor (4 bytes)
-        uint32_t valLen = static_cast<uint8_t>(buffer[pos]) |
-                          (static_cast<uint8_t>(buffer[pos+1]) << 8) |
-                          (static_cast<uint8_t>(buffer[pos+2]) << 16) |
-                          (static_cast<uint8_t>(buffer[pos+3]) << 24);
+        if (pos + 4 > buffer.size()) break;
+        const uint32_t valLen = static_cast<uint8_t>(buffer[pos]) |
+                                (static_cast<uint8_t>(buffer[pos+1]) << 8) |
+                                (static_cast<uint8_t>(buffer[pos+2]) << 16) |
+                                (static_cast<uint8_t>(buffer[pos+3]) << 24);
         pos += 4;
-        
+        if (pos + valLen > buffer.size()) break;
+
         std::string val(buffer.begin() + pos, buffer.begin() + pos + valLen);
         pos += valLen;
-        
+
         data[key] = val;
     }
     return data;

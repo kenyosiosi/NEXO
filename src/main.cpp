@@ -213,18 +213,22 @@ int main() {
             }
             
             if (ImGui::Button("INSERTAR", ImVec2(100, 30))) {
-                formInputs["id"] = std::to_string(currentSchema.nextId);
-                
-                RecordPointer ptr = storage_units[selectedTable]->insertRecord(formInputs);
-                for (auto const& [field, idx] : index_map[selectedTable]) {
-                    if (formInputs.count(field)) idx->insert(formInputs[field], ptr);
+                try {
+                    formInputs["id"] = std::to_string(currentSchema.nextId);
+
+                    RecordPointer ptr = storage_units[selectedTable]->insertRecord(formInputs);
+                    for (auto const& [field, idx] : index_map[selectedTable]) {
+                        if (formInputs.count(field)) idx->insert(formInputs[field], ptr);
+                    }
+
+                    saveSchema(selectedTable, currentSchema.nextId + 1, currentSchema.fields);
+
+                    consoleLog.push_back({"Registro insertado con ID: " + formInputs["id"], sf::Color::Green});
+                    formInputs.clear();
+                    refreshUI();
+                } catch (const std::exception& e) {
+                    consoleLog.push_back({"[Error] " + std::string(e.what()), sf::Color::Red});
                 }
-                
-                saveSchema(selectedTable, currentSchema.nextId + 1, currentSchema.fields);
-                
-                consoleLog.push_back({"Registro insertado con ID: " + formInputs["id"], sf::Color::Green});
-                formInputs.clear();
-                refreshUI(); 
             }
             ImGui::SameLine();
             if (ImGui::Button("COMPACTAR", ImVec2(100, 30))) {

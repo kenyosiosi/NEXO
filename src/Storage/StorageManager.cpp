@@ -1,5 +1,6 @@
 #include "../../include/Storage/StorageManager.h"
 #include <cstring>
+#include <algorithm>
 #include <iostream>
 
 StorageManager::StorageManager(const std::string& data_path) : dataFile(data_path), current_page_id(1) {
@@ -39,13 +40,23 @@ void StorageManager::initializePage(int page_id) {
 
 RecordPointer StorageManager::insertRecord(const std::map<std::string, std::string>& record) {
     std::vector<char> serialized_data = Serializer::serialize(record);
-    int data_size = serialized_data.size();
+    const int data_size = static_cast<int>(serialized_data.size());
+    // La zona útil de una página: 16 bytes de cabecera + slots de 8 bytes.
+    constexpr int PAGE_USABLE = PAGE_SIZE - 16;
+    if (8 + data_size > PAGE_USABLE) {
+        // Un registro que no cabe ni en una página vacía provocaría una
+        // recursión infinita buscando espacio: se rechaza de forma explícita.
+        throw std::runtime_error("El registro (" + std::to_string(data_size) +
+                                 " bytes) excede el máximo por página (" +
+                                 std::to_string(PAGE_USABLE - 8) + " bytes).");
+    }
+
     int slot_count, free_space_offset;
     memcpy(&slot_count, &page_buffer[4], 4);
     memcpy(&free_space_offset, &page_buffer[8], 4);
 
-    int space_needed = 8 + data_size; 
-    int current_header_end = 16 + (slot_count * 8);
+    const int space_needed = 8 + data_size;
+    const int current_header_end = 16 + (slot_count * 8);
 
     if (free_space_offset - current_header_end < space_needed) {
         current_page_id++;
@@ -71,16 +82,25 @@ RecordPointer StorageManager::insertRecord(const std::map<std::string, std::stri
 }
 
 std::map<std::string, std::string> StorageManager::getRecord(RecordPointer pointer) {
+    // Validar el puntero antes de tocar la página: un índice con entradas
+    // inválidas no debe poder leer fuera de la página.
+    if (pointer.page_id < 1 || pointer.page_id > current_page_id) return {};
+    if (pointer.slot_offset < 0) return {};
+
+    const int slot_pos = 16 + (pointer.slot_offset * 8);
+    if (slot_pos + 8 > PAGE_SIZE) return {};
+
     std::vector<char> page = dataFile.readPage(pointer.page_id);
     if (page.empty()) return {};
 
-    int slot_pos = 16 + (pointer.slot_offset * 8);
     int data_offset, data_size;
     memcpy(&data_offset, &page[slot_pos], 4);
     memcpy(&data_size, &page[slot_pos + 4], 4);
 
     // Si el size es -1, significa que fue eliminado 
-    if (data_size <= 0 || data_offset + data_size > PAGE_SIZE) return {};
+    if (data_size <= 0 || data_offset < 0 ||
+        data_offset > PAGE_SIZE || data_size > PAGE_SIZE ||
+        data_offset + data_size > PAGE_SIZE) return {};
     
     std::vector<char> record_data(page.begin() + data_offset, page.begin() + data_offset + data_size);
     return Serializer::deserialize(record_data);
@@ -88,6 +108,10 @@ std::map<std::string, std::string> StorageManager::getRecord(RecordPointer point
 
 // Borrado lógico para UPDATE y DELETE
 void StorageManager::logicalDelete(RecordPointer pointer) {
+    if (pointer.page_id < 1 || pointer.page_id > current_page_id || pointer.slot_offset < 0) return;
+    const int slot_pos = 16 + (pointer.slot_offset * 8);
+    if (slot_pos + 8 > PAGE_SIZE) return;
+
     // para determinar si la página está en el buffer de RAM o en el disco
     bool is_in_buffer = (pointer.page_id == current_page_id);
     std::vector<char> page;
@@ -100,9 +124,8 @@ void StorageManager::logicalDelete(RecordPointer pointer) {
 
     if (page.empty()) return;
 
-    int slot_pos = 16 + (pointer.slot_offset * 8);
-    int dead_size = -1; 
-    memcpy(&page[slot_pos + 4], &dead_size, 4); 
+    int dead_size = -1;
+    memcpy(&page[slot_pos + 4], &dead_size, 4);
 
     // Sincronizar y Persistir
     if (is_in_buffer) {
@@ -121,6 +144,9 @@ std::vector<std::pair<RecordPointer, std::map<std::string, std::string>>> Storag
         if (page.empty()) continue;
         int slot_count;
         memcpy(&slot_count, &page[4], 4);
+        // Un slot_count corrupto no debe lanzar el escaneo a bucles infinitos:
+        // cada slot son 8 bytes dentro del área útil de la página.
+        slot_count = std::max(0, std::min(slot_count, (PAGE_SIZE - 16) / 8));
         
         for (int s = 0; s < slot_count; s++) {
             RecordPointer ptr = {p, s};
