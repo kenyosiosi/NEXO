@@ -71,12 +71,32 @@ int main() {
     sf::RenderWindow window(sf::VideoMode({1280, 720}), "NEXO Engine - Workspace");
     window.setFramerateLimit(60);
 
-    sf::Image icon;
-    if (icon.loadFromFile("../assets/nexo_logo.png") || icon.loadFromFile("assets/nexo_logo.png")) {
-        window.setIcon(icon.getSize(), icon.getPixelsPtr());
+    // Icono y fuente viven en assets/, que puede estar al lado del
+    // ejecutable (build/) o en la raíz del repo según desde dónde se corra.
+    const auto localizarAsset = [](const char* relativa) -> std::string {
+        for (const char* prefijo : { "", "../" }) {
+            std::string candidato = std::string(prefijo) + relativa;
+            std::error_code ec;
+            if (fs::exists(candidato, ec)) return candidato;
+        }
+        return "";
+    };
+
+    if (const std::string logo = localizarAsset("assets/nexo_logo.png"); !logo.empty()) {
+        sf::Image icon;
+        if (icon.loadFromFile(logo)) window.setIcon(icon.getSize(), icon.getPixelsPtr());
     }
 
     if (!ImGui::SFML::Init(window)) return -1;
+
+    // Fuente con cobertura Latin (acentos/ñ). ImGui usa por defecto una fuente
+    // ASCII-only que corrompe el texto en español.
+    if (const std::string font_path = localizarAsset("assets/fonts/JetBrainsMono-Regular.ttf"); !font_path.empty()) {
+        ImGuiIO& io = ImGui::GetIO();
+        if (io.Fonts->AddFontFromFileTTF(font_path.c_str(), 17.0f)) {
+            ImGui::SFML::UpdateFontTexture();
+        }
+    }
 
     std::map<std::string, StorageManager*> storage_units;
     std::map<std::string, std::map<std::string, IndexManager*>> index_map;
@@ -109,6 +129,32 @@ int main() {
     }
 
     std::vector<LogEntry> consoleLog;
+
+    // Primera ejecución: sembrar una colección de demostración para que la
+    // ventana no abra vacía.
+    if (storage_units.empty()) {
+        saveSchema("demo_usuarios", 6, "id,nombre,rol,ciudad");
+        auto* demo_storage = new StorageManager("data/demo_usuarios.bin");
+        storage_units["demo_usuarios"] = demo_storage;
+        registros_sucios["demo_usuarios"] = 0;
+        index_map["demo_usuarios"]["id"] = new IndexManager("data/demo_usuarios_id.idx", 3);
+
+        const auto insertarDemo = [&](std::map<std::string, std::string> doc) {
+            const RecordPointer ptr = demo_storage->insertRecord(doc);
+            for (auto const& [field, idx] : index_map["demo_usuarios"]) {
+                if (doc.count(field)) idx->insert(doc[field], ptr);
+            }
+        };
+
+        insertarDemo({{"id", "1"}, {"nombre", "Alejandra Pérez"}, {"rol", "Admin"},     {"ciudad", "Mérida"}});
+        insertarDemo({{"id", "2"}, {"nombre", "Rafael Ramírez"},   {"rol", "Ingeniero"},{"ciudad", "El Vigía"}});
+        insertarDemo({{"id", "3"}, {"nombre", "Keny Rondón"},      {"rol", "Backend"},  {"ciudad", "Tovar"}});
+        insertarDemo({{"id", "4"}, {"nombre", "Mónica Gutiérrez"}, {"rol", "Analista"}, {"ciudad", "Mérida"}});
+        insertarDemo({{"id", "5"}, {"nombre", "José Ríos"},        {"rol", "DevOps"},   {"ciudad", "Valera"}});
+
+        consoleLog.push_back({"Colección de demostración 'demo_usuarios' creada (5 documentos).", sf::Color(150, 150, 170)});
+    }
+
     std::string selectedTable = "";
     SchemaInfo currentSchema = {1, "", {}};
     std::map<std::string, std::string> formInputs;
@@ -117,11 +163,17 @@ int main() {
     auto refreshUI = [&]() {
         if (selectedTable != "" && storage_units.count(selectedTable)) {
             currentRecords = storage_units[selectedTable]->scanAll();
-            currentSchema = loadSchema(selectedTable); 
+            currentSchema = loadSchema(selectedTable);
         } else {
             currentRecords.clear();
         }
     };
+
+    // Abrir con la primera colección ya seleccionada (la demo en el primer run).
+    if (!storage_units.empty()) {
+        selectedTable = storage_units.begin()->first;
+        refreshUI();
+    }
 
     char terminalBuffer[1024] = "";
     char nName[64] = "";

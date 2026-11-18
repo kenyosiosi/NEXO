@@ -80,6 +80,8 @@ if(NEXO_BUILD_GUI)
   target_link_libraries(NexoEngine PRIVATE nexo_core ImGui-SFML::ImGui-SFML)
 
   if(WIN32)
+    # Sin ventana de consola: la UI es la única interfaz.
+    set_target_properties(NexoEngine PROPERTIES WIN32_EXECUTABLE TRUE)
     # Static-link the GCC runtime so the .exe is self-contained (no DLL hunt).
     target_link_options(NexoEngine PRIVATE -static -static-libgcc -static-libstdc++)
   endif()
