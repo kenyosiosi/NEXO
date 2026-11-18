@@ -13,6 +13,7 @@
 #include "query_engine/tokenizer.h"
 #include "query_engine/parser.h"
 #include "Storage/StorageManager.h"
+#include "Storage/SchemaManager.h"
 #include "B-tree/IndexManager.h"
 
 #ifdef _WIN32
@@ -33,48 +34,7 @@ void asegurarCarpetaData() {
     if (!fs::exists("data")) fs::create_directory("data");
 }
 
-struct SchemaInfo { 
-    int nextId; 
-    std::string fields; 
-    std::vector<std::string> fieldsList;
-};
-
-bool validateSchema(const std::string& fields) {
-    if (fields.empty()) return false;
-    return (fields.find_first_of(".;/\\") == std::string::npos);
-}
-
-SchemaInfo loadSchema(const std::string& tableName) {
-    std::ifstream f("data/" + tableName + ".schema");
-    SchemaInfo info = {1, "", {}};
-    if (f.is_open()) {
-        std::string idStr;
-        std::getline(f, idStr);
-        if (!idStr.empty()) {
-            try { info.nextId = std::stoi(idStr); } catch (...) { info.nextId = 1; }
-        }
-        std::getline(f, info.fields);
-        
-        std::stringstream ss(info.fields);
-        std::string field;
-        while (std::getline(ss, field, ',')) {
-            field.erase(0, field.find_first_not_of(" "));
-            if(!field.empty()) info.fieldsList.push_back(field);
-        }
-        f.close();
-    }
-    return info;
-}
-
-void saveSchema(const std::string& tableName, int nextId, const std::string& fields) {
-    std::ofstream f("data/" + tableName + ".schema");
-    if (f.is_open()) {
-        f << nextId << "\n" << fields;
-        f.close();
-    }
-}
-
-void autoCompact(std::string tableName, 
+void autoCompact(std::string tableName,
                  std::map<std::string, StorageManager*>& storage_units, 
                  std::map<std::string, std::map<std::string, IndexManager*>>& index_map,
                  std::map<std::string, size_t>& registros_sucios) {
@@ -311,7 +271,7 @@ int main() {
 
             ImGui::Separator();
             if (ImGui::Button("OK", ImVec2(120, 0))) {
-                if (strlen(nName) > 0 && validateSchema(nFields)) {
+                if (strlen(nName) > 0 && validateCollectionName(nName) && validateSchemaFields(nFields)) {
                     std::string finalFields = "id";
                     if (strlen(nFields) > 0) finalFields += "," + std::string(nFields);
 

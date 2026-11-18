@@ -1,4 +1,5 @@
 #include "../../include/query_engine/QueryExecutor.h"
+#include "../../include/Storage/SchemaManager.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -67,14 +68,13 @@ std::string QueryExecutor::execute(std::map<std::string, std::string> query_ast)
     // 1. CREATE
     if (op == "CREATE") {
         if (storage_units.count(target)) return "[Error] La colección '" + target + "' ya existe.";
+        if (!validateCollectionName(target)) return "[Error] Nombre de colección inválido: usa solo letras, números, '_' o '-'.";
 
         std::string user_fields = query_ast.count("_fields") ? query_ast["_fields"] : "";
         std::string full_fields = "id";
         if (!user_fields.empty()) full_fields += "," + user_fields;
 
-        if (!fs::exists("data")) fs::create_directory("data");
-        std::ofstream f("data/" + target + ".schema");
-        if(f.is_open()) { f << "1\n" << full_fields; f.close(); }
+        saveSchema(target, 1, full_fields);
 
         storage_units[target] = new StorageManager("data/" + target + ".bin");
         index_map[target]["id"] = new IndexManager("data/" + target + "_id.idx", 3);
@@ -89,18 +89,16 @@ std::string QueryExecutor::execute(std::map<std::string, std::string> query_ast)
 
     // 2. DEFINE
     if (op == "DEFINE") {
-        std::ifstream f("data/" + target + ".schema");
-        if (!f.is_open()) return "[Error] No se encontró el esquema de '" + target + "'.";
-        std::string nextId, fields;
-        std::getline(f, nextId);
-        std::getline(f, fields);
-        f.close();
-        
+        const SchemaInfo schema = loadSchema(target);
+        if (schema.fields.empty()) return "[Error] No se encontró el esquema de '" + target + "'.";
+
         std::string index_list = "";
         for(auto const& [idx_name, idx_ptr] : index_map[target]) index_list += idx_name + ", ";
         if (!index_list.empty()) index_list.erase(index_list.length() - 2);
 
-        return "Estructura de '" + target + "':\nCampos: " + fields + "\nSiguiente ID: " + nextId + "\nÍndices Activos: [" + index_list + "]";
+        return "Estructura de '" + target + "':\nCampos: " + schema.fields +
+               "\nSiguiente ID: " + std::to_string(schema.nextId) +
+               "\nÍndices Activos: [" + index_list + "]";
     }
 
     // 3. INDEX
@@ -157,23 +155,13 @@ std::string QueryExecutor::execute(std::map<std::string, std::string> query_ast)
         payload.erase("operation");
         payload.erase("_table_target");
 
-        int nextId = 1;
-        std::string fields = "";
-        std::ifstream f_in("data/" + target + ".schema");
-        if (f_in.is_open()) {
-            std::string idStr;
-            std::getline(f_in, idStr);
-            if (!idStr.empty()) {
-                try { nextId = std::stoi(idStr); } catch(...) {}
-            }
-            std::getline(f_in, fields);
-            f_in.close();
-        }
+        const SchemaInfo schema = loadSchema(target);
+        int nextId = schema.nextId;
 
         // LÓGICA INTELIGENTE: Si el usuario forzó un ID, lo respetamos y actualizamos la secuencia
         if (payload.count("id")) {
             try {
-                int provided = std::stoi(payload["id"]);
+                const int provided = std::stoi(payload["id"]);
                 if (provided >= nextId) nextId = provided + 1;
             } catch(...) {
                 payload["id"] = std::to_string(nextId);
@@ -189,8 +177,7 @@ std::string QueryExecutor::execute(std::map<std::string, std::string> query_ast)
             if (payload.count(field)) idx->insert(payload[field], ptr);
         }
 
-        std::ofstream f_out("data/" + target + ".schema");
-        if (f_out.is_open()) { f_out << nextId << "\n" << fields; f_out.close(); }
+        saveSchema(target, nextId, schema.fields);
         
         return "Ok. Registro insertado exitosamente con ID: " + payload["id"];
     }

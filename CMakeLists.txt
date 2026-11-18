@@ -25,6 +25,7 @@ option(NEXO_BUILD_TESTS "Build the nexo_tests suite"            ON)
 add_library(nexo_core STATIC
   src/Storage/HeapFile.cpp
   src/Storage/Serializer.cpp
+  src/Storage/SchemaManager.cpp
   src/Storage/StorageManager.cpp
   src/B-tree/IndexManager.cpp
   src/Query_engine/tokenizer.cpp
