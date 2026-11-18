@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    name: Linux (GCC)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build \
+            libgl1-mesa-dev libx11-dev libxrandr-dev libxcursor-dev \
+            libxi-dev libudev-dev libfreetype-dev
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build -j "$(nproc)"
+
+      - name: Tests
+        run: ctest --test-dir build --output-on-failure
+
+  windows:
+    name: Windows (MinGW-w64 UCRT64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MSYS2 toolchain
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-ninja
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          $env:Path = "C:\msys64\ucrt64\bin;" + $env:Path
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $env:Path = "C:\msys64\ucrt64\bin;" + $env:Path
+          cmake --build build
+
+      - name: Tests
+        shell: pwsh
+        run: |
+          $env:Path = "C:\msys64\ucrt64\bin;" + $env:Path
+          ctest --test-dir build --output-on-failure
+
+      - name: Upload portable binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: NexoEngine-windows-x64
+          path: build/NexoEngine.exe
+          if-no-files-found: error
+
+  release:
+    name: Release (portable Windows build)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux]
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MSYS2 toolchain
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-ninja
+
+      - name: Build release binary
+        shell: pwsh
+        run: |
+          $env:Path = "C:\msys64\ucrt64\bin;" + $env:Path
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+          ctest --test-dir build --output-on-failure
+
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item build/NexoEngine.exe dist/
+          Copy-Item README.md dist/
+          Copy-Item README.es.md dist/ -ErrorAction SilentlyContinue
+          Compress-Archive -Path dist/* `
+            -DestinationPath "NexoEngine-${{ github.ref_name }}-windows-x64.zip"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "*.zip"
+          generate_release_notes: true
