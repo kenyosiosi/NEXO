@@ -37,7 +37,7 @@ void StorageManager::initializePage(int page_id) {
     dataFile.writePage(page_id, new_page);
 }
 
-RecordPointer StorageManager::insertRecord(std::map<std::string, std::string>& record) {
+RecordPointer StorageManager::insertRecord(const std::map<std::string, std::string>& record) {
     std::vector<char> serialized_data = Serializer::serialize(record);
     int data_size = serialized_data.size();
     int slot_count, free_space_offset;

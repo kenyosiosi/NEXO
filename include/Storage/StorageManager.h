@@ -20,7 +20,7 @@ private:
 
 public:
     StorageManager(const std::string& data_path);
-    RecordPointer insertRecord(std::map<std::string, std::string>& record);
+    RecordPointer insertRecord(const std::map<std::string, std::string>& record);
     std::map<std::string, std::string> getRecord(RecordPointer ptr);
     int getLastPageId() { return current_page_id; } // para reconstruir índices
     void logicalDelete(RecordPointer pointer);
