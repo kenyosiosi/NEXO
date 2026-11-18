@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEXO Engine — a from-scratch DBMS in C++17</title>
+<meta name="description" content="Non-relational DBMS built from scratch in C++17: page-based storage engine, B-Tree indexing, NoSQL query language and an interactive ImGui/SFML desktop GUI.">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0d1117;
+    color: #c9d1d9;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    line-height: 1.6;
+  }
+  a { color: #58a6ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .hero {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 72px 24px 40px;
+    text-align: center;
+  }
+  .logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .logo img { width: 44px; height: 44px; }
+  h1 { font-size: 2.6rem; color: #e6edf3; letter-spacing: -0.5px; }
+  .tagline { font-size: 1.2rem; color: #8b949e; margin-top: 10px; }
+  .cta {
+    display: inline-flex;
+    gap: 16px;
+    margin-top: 32px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .btn {
+    padding: 12px 28px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 1rem;
+    transition: transform .12s ease, background .12s ease;
+  }
+  .btn:hover { text-decoration: none; transform: translateY(-2px); }
+  .btn-primary { background: #238636; color: #fff; }
+  .btn-primary:hover { background: #2ea043; }
+  .btn-ghost { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+  .btn-ghost:hover { background: #30363d; }
+  .shot {
+    max-width: 960px;
+    margin: 24px auto 0;
+    padding: 0 24px;
+  }
+  .shot img {
+    width: 100%;
+    border-radius: 10px;
+    border: 1px solid #30363d;
+    box-shadow: 0 16px 48px rgba(0,0,0,.5);
+  }
+  .features {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 56px 24px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 20px;
+  }
+  .card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 22px;
+  }
+  .card h3 { color: #79c0ff; font-size: 1.05rem; margin-bottom: 8px; }
+  .card p { font-size: .93rem; color: #8b949e; }
+  .code {
+    max-width: 960px;
+    margin: 0 auto 56px;
+    padding: 0 24px;
+  }
+  pre {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 20px;
+    font-family: "Cascadia Code", Consolas, monospace;
+    font-size: .9rem;
+    overflow-x: auto;
+    color: #a5d6ff;
+  }
+  footer {
+    text-align: center;
+    padding: 28px;
+    color: #8b949e;
+    font-size: .85rem;
+    border-top: 1px solid #21262d;
+  }
+</style>
+</head>
+<body>
+
+<section class="hero">
+  <div class="logo">
+    <img src="https://raw.githubusercontent.com/kenyosiosi/NEXO/main/assets/nexo_logo.png" alt="NEXO logo">
+    <h1>NEXO Engine</h1>
+  </div>
+  <p class="tagline">A non-relational DBMS built from scratch in C++17 — pages, B-Trees and a query language of its own, with an interactive desktop GUI.</p>
+  <div class="cta">
+    <a class="btn btn-primary" href="https://github.com/kenyosiosi/NEXO/releases/latest">Download for Windows</a>
+    <a class="btn btn-ghost" href="https://github.com/kenyosiosi/NEXO">View on GitHub</a>
+  </div>
+</section>
+
+<div class="shot"><img src="https://raw.githubusercontent.com/kenyosiosi/NEXO/main/docs/screenshot.png" alt="NEXO Engine workspace UI"></div>
+
+<section class="features">
+  <div class="card"><h3>Page-based storage</h3><p>Heap Files in 4096-byte slotted pages, logical deletes with tombstones and auto-compact that physically reclaims space.</p></div>
+  <div class="card"><h3>B-Tree indexes</h3><p>Persistent trees with a parametric minimum degree, page-aligned on disk. Secondary indexes built over live data on demand.</p></div>
+  <div class="card"><h3>Query language</h3><p>Tokenizer → parser → AST → executor for CREATE, INSERT, GET, UPDATE, DELETE, SCAN, INDEX, STATS, DROP and COMPACT.</p></div>
+  <div class="card"><h3>Workspace GUI</h3><p>Collection explorer, JSON-tree document viewer and an interactive terminal, rendered with Dear ImGui + SFML 3.</p></div>
+  <div class="card"><h3>Tested &amp; hardened</h3><p>~1500 doctest assertions cover the engine; every buffer, offset and pointer is validated before it is trusted.</p></div>
+  <div class="card"><h3>Portable build</h3><p>CMake + FetchContent downloads SFML 3 and ImGui automatically. One command to build on Windows and Linux.</p></div>
+</section>
+
+<section class="code">
+<pre>$ git clone https://github.com/kenyosiosi/NEXO.git
+$ cd NEXO
+$ ./build.ps1 -Test    # Windows (MSYS2 UCRT64)
+$ ./build.sh --test    # Linux / WSL</pre>
+</section>
+
+<footer>
+  Universidad de Los Andes · Programación 3 ·
+  <a href="https://github.com/Rafael-A69">Rafael-A69</a> ·
+  <a href="https://github.com/Chinoto03">Chinoto03</a> ·
+  <a href="https://github.com/kenyosiosi">kenyosiosi</a> ·
+  <a href="https://github.com/kenyosiosi/NEXO/blob/main/LICENSE">MIT License</a>
+</footer>
+
+</body>
+</html>
