@@ -1,128 +1,111 @@
-# NEXO Engine - Workspace UI
+# NEXO Engine
 
-Este es un Sistema de Gestión de Bases de Datos (DBMS) no relacional desarrollado desde cero en C++. El motor utiliza una arquitectura basada en páginas, persistencia en archivos binarios, un sistema de indexación mediante Árboles B para optimizar la búsqueda y una **interfaz gráfica interactiva (GUI)** para la gestión visual de los datos.
+[![CI](https://github.com/kenyosiosi/NEXO/actions/workflows/ci.yml/badge.svg)](https://github.com/kenyosiosi/NEXO/actions/workflows/ci.yml)
+![C++17](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-### 🚀 Características Principales
+A **non-relational DBMS built from scratch in C++17**, with a page-based storage engine, B-Tree indexing, a NoSQL query language with its own tokenizer/parser, and an interactive desktop GUI.
 
-- **Interfaz Gráfica (Workspace UI):** Panel de control desarrollado con ImGui y SFML que incluye un explorador de colecciones, visualizador de documentos en formato árbol (JSON) y una terminal interactiva.
-- **Motor de Almacenamiento (Storage Engine):** Implementación de Heap Files con manejo de páginas de 4096 bytes y soporte para **Auto-Compactación** (eliminación física de registros muertos).
-- **Indexación Eficiente:** Uso de Árboles B de grado parametrizable para búsquedas con complejidad de tiempo O(log n). Los índices se reconstruyen automáticamente tras una compactación.
-- **Motor de Consultas (Query Engine):** Tokenizer y Parser integrados que interpretan comandos de tipo NoSQL directamente desde la terminal visual.
-- **Persistencia Automatizada:** Auto-descubrimiento de esquemas (`.schema`), índices (`.idx`) y archivos binarios (`.bin`) al iniciar el motor.
+> University project (Universidad de Los Andes, Programación 3) — rebuilt, hardened and shipped with a modern build system, test suite and CI.
 
+![NEXO Engine workspace](docs/screenshot.png)
 
+## Features
 
-### ⚙️ Arquitectura Técnica
+- **Storage engine** — Heap Files organized in 4096-byte pages with slotted pages, logical deletes (tombstones) and **auto-compact** that physically reclaims dead records.
+- **B-Tree indexing** — persistent B-Trees with a **parametric minimum degree** (2–27, bounded by page size), stored page-aligned on disk. Secondary indexes are built over existing data on demand.
+- **Query language** — tokenizer → recursive-descent parser → AST → executor. Commands: `CREATE`, `DEFINE`, `INSERT`, `GET`, `UPDATE`, `DELETE`, `SCAN`, `INDEX`, `STATS`, `DROP`, `COMPACT`.
+- **Workspace GUI** — collection explorer, JSON-tree document viewer and an interactive terminal, rendered with Dear ImGui + SFML 3.
+- **Crash-safe counters** — schema sequences and page allocation state are persisted on every write, so reopening a collection never corrupts its indexes.
+- **Hardened I/O** — the serializer and storage layers validate every length, offset and pointer before touching memory; corrupted files degrade gracefully instead of crashing.
 
-El proyecto se divide en tres capas fundamentales:
+## Download
 
-1. **Capa de Interfaz (UI):** Gestiona el renderizado visual, la interacción del usuario y la sincronización en tiempo real con el estado del disco.
-2. **Capa de Lenguaje (Query Engine):** Procesa las cadenas de texto del usuario, las convierte en tokens y genera un plan de ejecución (AST) para las operaciones CRUD.
-3. **Capa de Almacenamiento e Índices (Storage & B-Tree):** Gestiona la lectura/escritura física en disco, fragmentación, control de slots dentro de las páginas y la jerarquía de los nodos del árbol para un acceso rápido.
+Grab a self-contained Windows build (no installer, no DLLs — a single ~5 MB exe) from the
+[**Releases page**](https://github.com/kenyosiosi/NEXO/releases): download `NexoEngine-vX.Y.Z-windows-x64.zip`, unzip, run `NexoEngine.exe`.
 
+## Build from source
 
+CMake ≥ 3.24 fetches all dependencies automatically (SFML 3, Dear ImGui, ImGui-SFML) on the first configure — no manual setup needed.
 
-### 🛠️ Instalación y Compilación
+### Windows (MSYS2 UCRT64 + Ninja)
 
-El proyecto ha sido migrado a **CMake** para garantizar su portabilidad multiplataforma. 
-
-#### 1. Requisitos Previos
-* **CMake** (v3.12 o superior).
-* **Git** (para descargar dependencias).
-* **Compilador C++17:** * Windows: MinGW-w64 (Se recomienda usar la terminal **Git Bash**).
-  * Linux: GCC (`build-essential`).
-
-#### 2. Configurar el Entorno (Descarga de dependencias)
-El proyecto incluye scripts que descargan automáticamente ImGui y SFML. Abre tu terminal en la raíz del proyecto y ejecuta:
-
-**En Windows (Usa Git Bash):**
-```bash
-bash setup_win.sh
-
+```powershell
+.\build.ps1          # configure + compile
+.\build.ps1 -Test    # ... and run the test suite
+.\build.ps1 -Run     # ... and launch the app
 ```
 
-**En Linux:**
+Requirements: [MSYS2](https://www.msys2.org/) with `pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-ninja`, plus CMake.
+
+### Linux / WSL
 
 ```bash
-bash setup_linux.sh
-
+./build.sh           # configure + compile
+./build.sh --test    # ... and run the test suite
+./build.sh --run     # ... and launch the app
 ```
 
-#### 3. Compilación con CMake
+Requirements: `cmake ninja-build` and the dev headers SFML needs
+(`libgl1-mesa-dev libx11-dev libxrandr-dev libxcursor-dev libxi-dev libudev-dev libfreetype-dev`).
 
-Una vez que el script termine de preparar el entorno, compila el motor con los siguientes comandos:
+The binary is written to `build/NexoEngine.exe` (Windows) or `build-linux/NexoEngine` (Linux); run it from that directory so it can find `assets/` and `data/`.
+
+## Tests
+
+`nexo_tests` covers the engine headlessly with [doctest](https://github.com/doctest/doctest) — ~31 test cases / ~1500 assertions across three files:
+
+| File | Covers |
+|---|---|
+| `tests/test_storage.cpp` | Serializer round-trips, truncated/lying buffers, page overflow, tombstones, persistence, oversized-record rejection |
+| `tests/test_btree.cpp` | Ordered/unordered/duplicate insertions, parametric degree, reopen consistency across splits |
+| `tests/test_query.cpp` | Tokenizer/parser ASTs and end-to-end CREATE→INSERT→GET→UPDATE→DELETE→DROP flows |
 
 ```bash
-cd build
-cmake ..  # En Windows puede que necesites: cmake -G "MinGW Makefiles" ..
-cmake --build .
-
+ctest --test-dir build --output-on-failure
 ```
 
-#### 4. Ejecución
+CI builds and tests every push on both Linux (GCC) and Windows (MinGW-w64 UCRT64).
 
-El ejecutable se generará dentro de la carpeta `build`. Además, en Windows, CMake copiará automáticamente las `.dll` necesarias de SFML.
-
-```bash
-# Estando en la carpeta build:
-./NexoEngine
-
-```
-
-
-
-### 📂 Estructura del Proyecto
+## Architecture
 
 ```text
-├── build/              # Archivos de compilación y ejecutable final
-│   └── data/           # Archivos de la base de datos (.bin, .idx, .schema)
-├── include/            # Archivos de cabecera (.h)
-├── libs/               # Dependencias externas (SFML, ImGui) bajadas por el script
-├── src/                # Código fuente (.cpp)
-│   ├── B-tree/         # Lógica del Árbol B
-│   ├── Query_engine/   # Tokenizer, Parser y Ejecutor
-│   ├── Storage/        # Gestión de HeapFiles y serialización
-│   └── main.cpp        # Interfaz Gráfica (ImGui + SFML)
-├── CMakeLists.txt      # Configuración de compilación multiplataforma
-├── setup_win.sh        # Script de entorno para Windows
-├── setup_linux.sh      # Script de entorno para Linux
-└── README.md
-
+┌─────────────────────────────────────────────┐
+│  UI (src/main.cpp)                          │  Dear ImGui + SFML 3
+├─────────────────────────────────────────────┤
+│  Query Engine (src/Query_engine/)           │  tokenizer → parser → executor
+├─────────────────────────────────────────────┤
+│  Storage (src/Storage/)   │  B-Tree         │  HeapFile · Serializer · SchemaManager
+└─────────────────────────────────────────────┘
+        data/*.bin            data/*.idx
 ```
 
+- `nexo_core` — the engine library (GUI-free, the part the tests exercise).
+- `NexoEngine` — the UI layer on top.
+- `nexo_tests` — the doctest suite.
 
+Data layout: `<collection>.bin` (heap file), `<collection>.schema` (next id + field list), `<collection>_<field>.idx` (B-Tree pages).
 
-### 💻 Ejemplos de Consultas (Terminal NEXO)
+## Example session
 
-El motor soporta una sintaxis inspirada en JSON que puedes escribir directamente en la terminal de la aplicación:
+```text
+CREATE "usuarios" {fields: "nombre,edad"}
+INSERT INTO "usuarios" {"nombre": "Keny", "edad": "21"}
+INDEX "nombre" ON "usuarios"
+GET FROM "usuarios" {"nombre": "Keny"}
+UPDATE "usuarios" SET {"edad": "22"} WHERE {"id": "1"}
+SCAN "usuarios"
+STATS "usuarios"
+```
 
-* **Crear Colección:** `CREATE "usuarios" {fields: "nombre,edad,cedula"}`
-*(Inicializa el archivo usuarios.bin y su esquema).*
-* **Índices Secundarios:** `INDEX "nombre" ON "usuarios"`
-*(Crea el archivo usuarios_nombre.idx para búsquedas rápidas).*
-* **Insertar:** `INSERT INTO "usuarios" {"id": "1", "nombre": "Keny", "edad": "21"}`
-*(Guarda el registro y actualiza los árboles B correspondientes).*
-* **Buscar:** `GET FROM "usuarios" {"id": "1"}`
-*(Busca el registro usando el índice).*
-* **Actualizar:** `UPDATE "usuarios" SET {"edad": "22"} WHERE {"id": "1"}`
-*(Aplica borrado lógico al registro original y crea uno nuevo al final del archivo físico).*
-* **Borrar:** `DELETE FROM "usuarios" WHERE {"id": "2"}`
-*(Aplica un Tombstone lógico al registro).*
-* **Explorar:** `SCAN "usuarios"`
-*(Muestra todos los registros vivos de la colección).*
+## Authors
 
+- **Rafael Angel Ramirez Ibarra** — [Rafael-A69](https://github.com/Rafael-A69)
+- **Rafael Andres Castillo Ortega** — [Chinoto03](https://github.com/Chinoto03)
+- **Keny Joan Rondon Perez** — [kenyosiosi](https://github.com/kenyosiosi)
 
+Universidad de Los Andes · Facultad de Ingeniería · Programación 3 · Prof. Alejandro Mujica
 
-### 👥 Autores
+## License
 
-* **Rafael Angel Ramirez Ibarra** - [Rafael-A69](https://github.com/Rafael-A69)
-* **Rafael Andres Castillo Ortega** - [Chinoto03](https://github.com/Chinoto03)
-* **Keny Joan Rondon Perez** - [kenyosiosi](https://github.com/kenyosiosi)
-
-### 🏛️ Institución
-
-**Universidad de Los Andes** Facultad: Ingeniería
-
-Curso: Programación 3
-
-Profesor: Alejandro Mujica
+[MIT](LICENSE) · The bundled [JetBrains Mono](assets/fonts/OFL.txt) font is under the SIL Open Font License.
