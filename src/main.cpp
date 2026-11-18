@@ -9,9 +9,9 @@
 #include <fstream>
 #include <sstream>
 
-#include "Query_engine/QueryExecutor.h"
-#include "Query_engine/tokenizer.h"
-#include "Query_engine/parser.h"
+#include "query_engine/QueryExecutor.h"
+#include "query_engine/tokenizer.h"
+#include "query_engine/parser.h"
 #include "Storage/StorageManager.h"
 #include "B-tree/IndexManager.h"
 
@@ -108,12 +108,13 @@ void autoCompact(std::string tableName,
 
 int main() {
     asegurarCarpetaData();
-    sf::RenderWindow window(sf::VideoMode(1280, 720), "NEXO Engine - Workspace");
+    sf::RenderWindow window(sf::VideoMode({1280, 720}), "NEXO Engine - Workspace");
     window.setFramerateLimit(60);
 
     sf::Image icon;
-    if (icon.loadFromFile("../assets/nexo_logo.png")) window.setIcon(icon.getSize().x, icon.getSize().y, icon.getPixelsPtr());
-    else if (icon.loadFromFile("assets/nexo_logo.png")) window.setIcon(icon.getSize().x, icon.getSize().y, icon.getPixelsPtr());
+    if (icon.loadFromFile("../assets/nexo_logo.png") || icon.loadFromFile("assets/nexo_logo.png")) {
+        window.setIcon(icon.getSize(), icon.getPixelsPtr());
+    }
 
     if (!ImGui::SFML::Init(window)) return -1;
 
@@ -169,10 +170,9 @@ int main() {
 
     sf::Clock deltaClock;
     while (window.isOpen()) {
-        sf::Event event;
-        while (window.pollEvent(event)) {
-            ImGui::SFML::ProcessEvent(window, event);
-            if (event.type == sf::Event::Closed) window.close();
+        while (const auto event = window.pollEvent()) {
+            ImGui::SFML::ProcessEvent(window, *event);
+            if (event->is<sf::Event::Closed>()) window.close();
         }
 
         ImGui::SFML::Update(window, deltaClock.restart());
