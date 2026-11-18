@@ -165,6 +165,40 @@ TEST_CASE("QueryExecutor: UPDATE rewrites the document") {
     CHECK(f.run("SCAN \"usuarios\"").find("\"22\"") != std::string::npos);
 }
 
+TEST_CASE("QueryExecutor: reads never return tombstoned records after UPDATE") {
+    // UPDATE aplica borrado lógico + reinserta, dejando entradas de índice
+    // viejas. GET/UPDATE/DELETE deben resolver siempre el registro vivo.
+    EngineFixture f;
+    f.run("CREATE \"usuarios\" {fields: \"nombre,edad\"}");
+    f.run("INSERT INTO \"usuarios\" {\"nombre\": \"Keny\", \"edad\": \"21\"}");
+    f.run("UPDATE \"usuarios\" SET {\"edad\": \"22\"} WHERE {\"id\": \"1\"}");
+
+    const std::string got = f.run("GET FROM \"usuarios\" {\"id\": \"1\"}");
+    CHECK(got.find("\"22\"") != std::string::npos);
+    CHECK(got.find("\"21\"") == std::string::npos);
+
+    // Segunda actualización sobre el registro ya movido.
+    CHECK(f.run("UPDATE \"usuarios\" SET {\"edad\": \"23\"} WHERE {\"id\": \"1\"}").find("correctamente") != std::string::npos);
+    CHECK(f.run("GET FROM \"usuarios\" {\"id\": \"1\"}").find("\"23\"") != std::string::npos);
+
+    // El borrado usa también el índice: debe eliminar el registro vivo.
+    CHECK(f.run("DELETE FROM \"usuarios\" WHERE {\"id\": \"1\"}").find("eliminado") != std::string::npos);
+    CHECK(f.run("SCAN \"usuarios\"").find("vacía") != std::string::npos);
+}
+
+TEST_CASE("QueryExecutor: secondary indexes resolve the live record too") {
+    EngineFixture f;
+    f.run("CREATE \"usuarios\" {fields: \"nombre\"}");
+    f.run("INSERT INTO \"usuarios\" {\"nombre\": \"Keny\"}");
+    f.run("INDEX \"nombre\" ON \"usuarios\"");
+    f.run("UPDATE \"usuarios\" SET {\"nombre\": \"Keny Jr.\"} WHERE {\"id\": \"1\"}");
+
+    // La clave vieja sigue en el índice (se purga con COMPACT), pero la
+    // búsqueda no debe devolver el registro muerto.
+    CHECK(f.run("GET FROM \"usuarios\" {\"nombre\": \"Keny\"}").find("no encontrado") != std::string::npos);
+    CHECK(f.run("GET FROM \"usuarios\" {\"nombre\": \"Keny Jr.\"}").find("Keny Jr.") != std::string::npos);
+}
+
 TEST_CASE("QueryExecutor: STATS reports fragmentation and DROP removes everything") {
     EngineFixture f;
     f.run("CREATE \"usuarios\" {fields: \"nombre\"}");

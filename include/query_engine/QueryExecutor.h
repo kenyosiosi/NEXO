@@ -16,6 +16,8 @@ private:
 
     std::string formatRecord(const std::map<std::string, std::string>& record);
     std::string obtenerReporteMetricas(const std::string& target);
+    bool findLiveRecord(const std::string& target, const std::string& field,
+                        const std::string& value, RecordPointer& out);
 
 public:
     QueryExecutor(std::map<std::string, StorageManager*>& storage, 

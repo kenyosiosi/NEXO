@@ -42,6 +42,20 @@ std::string QueryExecutor::obtenerReporteMetricas(const std::string& target) {
     return ss.str();
 }
 
+bool QueryExecutor::findLiveRecord(const std::string& target, const std::string& field,
+                                   const std::string& value, RecordPointer& out) {
+    // UPDATE y DELETE dejan atrás entradas de índice que apuntan a registros
+    // con tombstone, así que recorremos todos los hits del índice y devolvemos
+    // el primero que todavía esté vivo. La auto-compactación purga lo demás.
+    for (const RecordPointer& ptr : index_map[target][field]->search(value)) {
+        if (!storage_units[target]->getRecord(ptr).empty()) {
+            out = ptr;
+            return true;
+        }
+    }
+    return false;
+}
+
 std::string QueryExecutor::execute(std::map<std::string, std::string> query_ast) {
     if (query_ast.empty() || query_ast.find("operation") == query_ast.end()) {
         return "[Error] Consulta vacía o mal formada.";
@@ -206,9 +220,8 @@ std::string QueryExecutor::execute(std::map<std::string, std::string> query_ast)
         }
 
         // Realizar la búsqueda usando el índice dinámico encontrado
-        RecordPointer ptr = index_map[target][search_field]->findOne(search_value);
-        
-        if (ptr.page_id != -1) {
+        RecordPointer ptr;
+        if (findLiveRecord(target, search_field, search_value, ptr)) {
             std::map<std::string, std::string> record = storage_units[target]->getRecord(ptr);
             return "Documento encontrado (vía índice '" + search_field + "'):\n" + formatRecord(record);
         }
@@ -220,8 +233,8 @@ std::string QueryExecutor::execute(std::map<std::string, std::string> query_ast)
     else if (op == "DELETE") {
         if (!query_ast.count("id")) return "[Error] DELETE requiere especificar el 'id'.";
         
-        RecordPointer ptr = index_map[target]["id"]->findOne(query_ast["id"]);
-        if (ptr.page_id != -1) {
+        RecordPointer ptr;
+        if (findLiveRecord(target, "id", query_ast["id"], ptr)) {
             storage_units[target]->logicalDelete(ptr);
             registros_sucios[target]++; 
             return "Documento (ID: " + query_ast["id"] + ") eliminado lógicamente.";
@@ -233,8 +246,10 @@ std::string QueryExecutor::execute(std::map<std::string, std::string> query_ast)
     else if (op == "UPDATE") {
         if (!query_ast.count("id")) return "[Error] UPDATE requiere un 'id' válido.";
         
-        RecordPointer ptr = index_map[target]["id"]->findOne(query_ast["id"]);
-        if (ptr.page_id == -1) return "No se encontró el documento a modificar.";
+        RecordPointer ptr;
+        if (!findLiveRecord(target, "id", query_ast["id"], ptr)) {
+            return "No se encontró el documento a modificar.";
+        }
 
         std::map<std::string, std::string> data = storage_units[target]->getRecord(ptr);
         if (data.empty()) return "El documento ya fue eliminado previamente.";
