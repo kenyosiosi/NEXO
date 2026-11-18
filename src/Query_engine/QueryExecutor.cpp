@@ -1,5 +1,6 @@
 #include "../../include/query_engine/QueryExecutor.h"
 #include "../../include/Storage/SchemaManager.h"
+#include "Core/Messages.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -20,6 +21,8 @@ std::string QueryExecutor::formatRecord(const std::map<std::string, std::string>
 }
 
 std::string QueryExecutor::obtenerReporteMetricas(const std::string& target) {
+    using nexo::msg;
+    using nexo::Msg;
     std::stringstream ss;
     std::string filepath = "data/" + target + ".bin";
     
@@ -31,14 +34,17 @@ std::string QueryExecutor::obtenerReporteMetricas(const std::string& target) {
     double ratio = (totales > 0) ? (static_cast<double>(sucios) / totales) * 100.0 : 0.0;
     size_t file_size = fs::exists(filepath) ? fs::file_size(filepath) : 0;
 
-    ss << "\n--- MÉTRICAS DE " << target << " ---\n";
-    ss << " Registros Vivos:    " << vivos << "\n";
-    ss << " Registros Sucios:   " << sucios << "\n";
-    ss << " Fragmentación:      " << ratio << " %\n";
-    ss << " Tamaño en disco:    " << file_size << " bytes";
+    char ratio_buf[32];
+    snprintf(ratio_buf, sizeof(ratio_buf), "%.6g", ratio);
+
+    ss << msg(Msg::MetricsTitle, target)
+       << msg(Msg::MetricsLive, std::to_string(vivos))
+       << msg(Msg::MetricsDead, std::to_string(sucios))
+       << msg(Msg::MetricsFrag, ratio_buf)
+       << msg(Msg::MetricsSize, std::to_string(file_size));
 
     if (vivos >= 100 && ratio >= 30.0) {
-        ss << "\n[ALERTA] Índice de fragmentación crítico. Sugerencia: COMPACT.";
+        ss << msg(Msg::MetricsAlert);
     }
     return ss.str();
 }
@@ -58,8 +64,10 @@ bool QueryExecutor::findLiveRecord(const std::string& target, const std::string&
 }
 
 std::string QueryExecutor::execute(std::map<std::string, std::string> query_ast) {
+    using nexo::msg;
+    using nexo::Msg;
     if (query_ast.empty() || query_ast.find("operation") == query_ast.end()) {
-        return "[Error] Consulta vacía o mal formada.";
+        return msg(Msg::EmptyQuery);
     }
 
     std::string op = query_ast["operation"];
@@ -67,8 +75,8 @@ std::string QueryExecutor::execute(std::map<std::string, std::string> query_ast)
 
     // 1. CREATE
     if (op == "CREATE") {
-        if (storage_units.count(target)) return "[Error] La colección '" + target + "' ya existe.";
-        if (!validateCollectionName(target)) return "[Error] Nombre de colección inválido: usa solo letras, números, '_' o '-'.";
+        if (storage_units.count(target)) return msg(Msg::CollectionExists, target);
+        if (!validateCollectionName(target)) return msg(Msg::InvalidName);
 
         std::string user_fields = query_ast.count("_fields") ? query_ast["_fields"] : "";
         std::string full_fields = "id";
@@ -80,31 +88,30 @@ std::string QueryExecutor::execute(std::map<std::string, std::string> query_ast)
         index_map[target]["id"] = new IndexManager("data/" + target + "_id.idx", 3);
         registros_sucios[target] = 0;
 
-        return "Colección '" + target + "' creada con éxito. Índice 'id' autogenerado.";
+        return msg(Msg::CollectionCreated, target);
     }
 
     if (storage_units.find(target) == storage_units.end()) {
-        return "[Error] La colección '" + target + "' no existe.";
+        return msg(Msg::CollectionNotExists, target);
     }
 
     // 2. DEFINE
     if (op == "DEFINE") {
         const SchemaInfo schema = loadSchema(target);
-        if (schema.fields.empty()) return "[Error] No se encontró el esquema de '" + target + "'.";
+        if (schema.fields.empty()) return msg(Msg::SchemaNotFound, target);
 
         std::string index_list = "";
         for(auto const& [idx_name, idx_ptr] : index_map[target]) index_list += idx_name + ", ";
         if (!index_list.empty()) index_list.erase(index_list.length() - 2);
 
-        return "Estructura de '" + target + "':\nCampos: " + schema.fields +
-               "\nSiguiente ID: " + std::to_string(schema.nextId) +
-               "\nÍndices Activos: [" + index_list + "]";
+        return msg(Msg::DefineReport, target, schema.fields,
+                   std::to_string(schema.nextId), index_list);
     }
 
     // 3. INDEX
     if (op == "INDEX") {
         std::string field = query_ast["field"];
-        if (index_map[target].count(field)) return "[Error] El índice para '" + field + "' ya existe.";
+        if (index_map[target].count(field)) return msg(Msg::IndexExists, field);
         
         index_map[target][field] = new IndexManager("data/" + target + "_" + field + ".idx", 3);
         auto records = storage_units[target]->scanAll();
@@ -113,7 +120,7 @@ std::string QueryExecutor::execute(std::map<std::string, std::string> query_ast)
                 index_map[target][field]->insert(row.second[field], row.first);
             }
         }
-        return "Índice secundario sobre '" + field + "' creado exitosamente.";
+        return msg(Msg::IndexCreated, field);
     }
 
     // 4. DROP
@@ -131,7 +138,7 @@ std::string QueryExecutor::execute(std::map<std::string, std::string> query_ast)
         fs::remove("data/" + target + ".bin");
         fs::remove("data/" + target + ".schema");
 
-        return "Colección '" + target + "' eliminada por completo.";
+        return msg(Msg::CollectionDropped, target);
     }
 
     // 5. STATS
@@ -142,9 +149,9 @@ std::string QueryExecutor::execute(std::map<std::string, std::string> query_ast)
     // 6. SCAN
     if (op == "SCAN") {
         auto records = storage_units[target]->scanAll();
-        if (records.empty()) return "La colección '" + target + "' está vacía.";
+        if (records.empty()) return msg(Msg::ScanEmpty, target);
         std::stringstream ss;
-        ss << records.size() << " documentos encontrados:\n";
+        ss << msg(Msg::ScanHeader, std::to_string(records.size()));
         for (auto& row : records) ss << "  " << formatRecord(row.second) << "\n";
         return ss.str();
     } 
@@ -179,7 +186,7 @@ std::string QueryExecutor::execute(std::map<std::string, std::string> query_ast)
 
         saveSchema(target, nextId, schema.fields);
         
-        return "Ok. Registro insertado exitosamente con ID: " + payload["id"];
+        return msg(Msg::RecordInserted, payload["id"]);
     }
 
     // 8. GET
@@ -202,44 +209,43 @@ std::string QueryExecutor::execute(std::map<std::string, std::string> query_ast)
         }
 
         if (!index_found) {
-            return "[Error] No se encontró un índice para los campos proporcionados. "
-                   "Crea uno con: INDEX \"campo\" ON \"" + target + "\"";
+            return msg(Msg::GetNeedsIndex, target);
         }
 
         // Realizar la búsqueda usando el índice dinámico encontrado
         RecordPointer ptr;
         if (findLiveRecord(target, search_field, search_value, ptr)) {
             std::map<std::string, std::string> record = storage_units[target]->getRecord(ptr);
-            return "Documento encontrado (vía índice '" + search_field + "'):\n" + formatRecord(record);
+            return msg(Msg::FoundViaIndex, search_field) + formatRecord(record);
         }
         
-        return "Documento no encontrado con " + search_field + ": '" + search_value + "'.";
+        return msg(Msg::GetNotFound, search_field, search_value);
     }
 
     // 9. DELETE
     else if (op == "DELETE") {
-        if (!query_ast.count("id")) return "[Error] DELETE requiere especificar el 'id'.";
+        if (!query_ast.count("id")) return msg(Msg::DeleteNeedsId);
         
         RecordPointer ptr;
         if (findLiveRecord(target, "id", query_ast["id"], ptr)) {
             storage_units[target]->logicalDelete(ptr);
             registros_sucios[target]++; 
-            return "Documento (ID: " + query_ast["id"] + ") eliminado lógicamente.";
+            return msg(Msg::DeleteOk, query_ast["id"]);
         }
-        return "No se encontró el documento para eliminar.";
+        return msg(Msg::DeleteNotFound);
     }
 
     // 10. UPDATE
     else if (op == "UPDATE") {
-        if (!query_ast.count("id")) return "[Error] UPDATE requiere un 'id' válido.";
+        if (!query_ast.count("id")) return msg(Msg::UpdateNeedsId);
         
         RecordPointer ptr;
         if (!findLiveRecord(target, "id", query_ast["id"], ptr)) {
-            return "No se encontró el documento a modificar.";
+            return msg(Msg::UpdateNotFound);
         }
 
         std::map<std::string, std::string> data = storage_units[target]->getRecord(ptr);
-        if (data.empty()) return "El documento ya fue eliminado previamente.";
+        if (data.empty()) return msg(Msg::AlreadyDeleted);
 
         for (auto const& [key, val] : query_ast) {
             if (key.substr(0, 5) == "_set_") data[key.substr(5)] = val;
@@ -253,8 +259,8 @@ std::string QueryExecutor::execute(std::map<std::string, std::string> query_ast)
             if (data.count(field)) idx->insert(data[field], new_ptr); 
         }
 
-        return "Documento actualizado correctamente.";
+        return msg(Msg::UpdateOk);
     }
 
-    return "[Error] Operación no soportada: " + op;
+    return msg(Msg::UnsupportedOp, op);
 }

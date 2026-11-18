@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 project(NexoEngine
-  VERSION 1.0.0
+  VERSION 1.1.0
   DESCRIPTION "NEXO: a non-relational DBMS engine with a Workspace UI"
   LANGUAGES CXX
 )
@@ -23,6 +23,7 @@ option(NEXO_BUILD_TESTS "Build the nexo_tests suite"            ON)
 # headless on any platform.
 # ---------------------------------------------------------------------------
 add_library(nexo_core STATIC
+  src/Core/Messages.cpp
   src/Storage/HeapFile.cpp
   src/Storage/Serializer.cpp
   src/Storage/SchemaManager.cpp
@@ -75,9 +76,11 @@ if(NEXO_BUILD_GUI)
 
   add_executable(NexoEngine
     src/main.cpp
+    src/ui/GuiStrings.cpp
     $<$<PLATFORM_ID:Windows>:${CMAKE_CURRENT_BINARY_DIR}/resources.rc>
   )
   target_link_libraries(NexoEngine PRIVATE nexo_core ImGui-SFML::ImGui-SFML)
+  target_include_directories(NexoEngine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
   if(WIN32)
     # Sin ventana de consola: la UI es la única interfaz.
@@ -103,6 +106,7 @@ if(NEXO_BUILD_TESTS AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests)
     tests/test_storage.cpp
     tests/test_btree.cpp
     tests/test_query.cpp
+    tests/test_messages.cpp
   )
   target_link_libraries(nexo_tests PRIVATE nexo_core doctest::doctest)
   add_test(NAME nexo_core COMMAND nexo_tests)

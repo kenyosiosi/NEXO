@@ -8,6 +8,10 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <cctype>
+#include <cstring>
+#include <cstdlib>
+#include <algorithm>
 
 #include "query_engine/QueryExecutor.h"
 #include "query_engine/tokenizer.h"
@@ -15,6 +19,7 @@
 #include "Storage/StorageManager.h"
 #include "Storage/SchemaManager.h"
 #include "B-tree/IndexManager.h"
+#include "ui/GuiStrings.h"
 
 #ifdef _WIN32
     #include <windows.h>
@@ -29,6 +34,9 @@ struct LogEntry {
     std::string text;
     sf::Color color;
 };
+
+// El log crecía sin límite (fuga en sesiones largas): cap duro de entradas.
+constexpr size_t kMaxLogEntries = 500;
 
 void asegurarCarpetaData() {
     if (!fs::exists("data")) fs::create_directory("data");
@@ -66,8 +74,76 @@ void autoCompact(std::string tableName,
     registros_sucios[tableName] = 0;
 }
 
+// Comandos de la guía: sintaxis universal + ejemplo ejecutable ("Probar").
+struct GuideCmd {
+    const char* syntax;
+    ui::S desc;
+    const char* example;
+};
+
+const GuideCmd kGuideCmds[] = {
+    {"CREATE \"col\" {\"fields\": \"nombre,edad\"}",                          ui::S::CmdCreateDesc, "CREATE \"usuarios\" {\"fields\": \"nombre,edad\"}"},
+    {"INSERT INTO \"col\" {\"campo\": \"valor\"}",                            ui::S::CmdInsertDesc, "INSERT INTO \"demo_usuarios\" {\"nombre\": \"Ana\", \"rol\": \"QA\"}"},
+    {"GET FROM \"col\" {\"id\": \"1\"}",                                      ui::S::CmdGetDesc,    "GET FROM \"demo_usuarios\" {\"id\": \"1\"}"},
+    {"SCAN \"col\"",                                                          ui::S::CmdScanDesc,   "SCAN \"demo_usuarios\""},
+    {"UPDATE \"col\" SET {\"campo\": \"valor\"} WHERE {\"id\": \"1\"}",       ui::S::CmdUpdateDesc, "UPDATE \"demo_usuarios\" SET {\"rol\": \"Senior\"} WHERE {\"id\": \"1\"}"},
+    {"DELETE FROM \"col\" WHERE {\"id\": \"1\"}",                             ui::S::CmdDeleteDesc, "DELETE FROM \"demo_usuarios\" WHERE {\"id\": \"1\"}"},
+    {"INDEX \"campo\" ON \"col\"",                                            ui::S::CmdIndexDesc,  "INDEX \"ciudad\" ON \"demo_usuarios\""},
+    {"STATS \"col\"",                                                         ui::S::CmdStatsDesc,  "STATS \"demo_usuarios\""},
+    {"DEFINE \"col\"",                                                        ui::S::CmdDefineDesc, "DEFINE \"demo_usuarios\""},
+    {"DROP \"col\"",                                                          ui::S::CmdDropDesc,   "DROP \"col\""},
+};
+
+// ---------------------------------------------------------------------------
+// Driver de demostración: con la variable de entorno NEXO_DEMO_SCRIPT la app
+// se conduce sola (teclear, ejecutar, abrir modales, cambiar idioma) y captura
+// frames a PNG. Lo usa la automatización de GIF/capturas sin depender del
+// foco de la ventana de Windows. Pasos separados por ';':
+//   TYPE:<texto> · ENTER · CLICK:x,y · PAUSE:<ms> · SHOT:<nombre> ·
+//   GUIDE · CLOSE_GUIDE · LANG:ES|EN
+// ---------------------------------------------------------------------------
+struct DemoStep {
+    enum Kind { TYPE, ENTER, CLICK, PAUSE, SHOT, GUIDE, CLOSE_GUIDE, LANG } kind;
+    std::string arg1;
+    std::string arg2;
+    int ms = 0;
+};
+
+std::vector<DemoStep> parseDemoScript(const std::string& script) {
+    std::vector<DemoStep> steps;
+    size_t pos = 0;
+    while (pos <= script.size()) {
+        size_t sep = script.find(';', pos);
+        if (sep == std::string::npos) sep = script.size();
+        std::string tok = script.substr(pos, sep - pos);
+        pos = sep + 1;
+        if (tok.empty()) continue;
+
+        auto starts = [&](const char* p) { return tok.rfind(p, 0) == 0; };
+        if (starts("TYPE:")) steps.push_back({DemoStep::TYPE, tok.substr(5), "", 0});
+        else if (starts("CLICK:")) {
+            DemoStep s{DemoStep::CLICK, "", "", 0};
+            size_t x = tok.substr(6).find('x');
+            if (x != std::string::npos) {
+                s.arg1 = tok.substr(6, x);
+                s.arg2 = tok.substr(6 + x + 1);
+            }
+            steps.push_back(s);
+        }
+        else if (starts("PAUSE:")) steps.push_back({DemoStep::PAUSE, "", "", atoi(tok.substr(6).c_str())});
+        else if (starts("SHOT:")) steps.push_back({DemoStep::SHOT, tok.substr(5), "", 0});
+        else if (starts("LANG:")) steps.push_back({DemoStep::LANG, tok.substr(5), "", 0});
+        else if (tok == "ENTER") steps.push_back({DemoStep::ENTER, "", "", 0});
+        else if (tok == "GUIDE") steps.push_back({DemoStep::GUIDE, "", "", 0});
+        else if (tok == "CLOSE_GUIDE") steps.push_back({DemoStep::CLOSE_GUIDE, "", "", 0});
+    }
+    return steps;
+}
+
 int main() {
     asegurarCarpetaData();
+    ui::loadPrefs(); // idioma + banner persistidos en data/ui.cfg
+
     sf::RenderWindow window(sf::VideoMode({1280, 720}), "NEXO Engine - Workspace");
     window.setFramerateLimit(60);
 
@@ -129,6 +205,12 @@ int main() {
     }
 
     std::vector<LogEntry> consoleLog;
+    auto pushLog = [&](std::string text, sf::Color color) {
+        consoleLog.push_back({std::move(text), color});
+        if (consoleLog.size() > kMaxLogEntries)
+            consoleLog.erase(consoleLog.begin(),
+                             consoleLog.begin() + static_cast<long>(consoleLog.size() - kMaxLogEntries));
+    };
 
     // Primera ejecución: sembrar una colección de demostración para que la
     // ventana no abra vacía.
@@ -152,7 +234,7 @@ int main() {
         insertarDemo({{"id", "4"}, {"nombre", "Mónica Gutiérrez"}, {"rol", "Analista"}, {"ciudad", "Mérida"}});
         insertarDemo({{"id", "5"}, {"nombre", "José Ríos"},        {"rol", "DevOps"},   {"ciudad", "Valera"}});
 
-        consoleLog.push_back({"Colección de demostración 'demo_usuarios' creada (5 documentos).", sf::Color(150, 150, 170)});
+        pushLog(ui::str(ui::S::LogDemoSeed), sf::Color(150, 150, 170));
     }
 
     std::string selectedTable = "";
@@ -179,6 +261,65 @@ int main() {
     char nName[64] = "";
     char nFields[256] = "";
     bool showCreateModal = false;
+    bool showGuide = false;
+    bool createInvalid = false;
+    bool focusTerminal = true; // la terminal arranca enfocada: se puede escribir de inmediato
+
+    // Historial de la terminal (↑ / ↓).
+    std::vector<std::string> cmdHistory;
+    int cmdHistoryPos = -1;
+    constexpr size_t kMaxHistory = 200;
+
+    // --- Modo demo: conducción scripted para GIF/capturas automatizadas ---
+    std::vector<DemoStep> demoSteps;
+    if (const char* d = std::getenv("NEXO_DEMO_SCRIPT")) demoSteps = parseDemoScript(d);
+    size_t demoIdx = 0;
+    int demoHold = 45;         // frames de gracia antes del primer paso
+    std::string demoTyped;     // texto restante del paso TYPE
+    int demoTypeLeft = -1;     // caracteres que faltan por teclear (-1 = paso sin iniciar)
+    bool demoClickPending = false;  // soltar el botón en el frame siguiente
+    bool demoEnterPending = false;  // soltar Enter en el frame siguiente
+    std::string pendingShot;   // captura solicitada para el final del frame
+    if (!fs::exists("data/shots")) fs::create_directory("data/shots");
+    bool demoCloseGuide = false;    // cierra el modal GUÍA desde el script
+
+    // Ejecución de un comando de terminal: la usan el usuario (Enter), el
+    // botón "Probar" de la guía y el driver del modo demo.
+    auto ejecutarComando = [&](const std::string& inputCmd) {
+        if (inputCmd.empty()) return;
+        if (cmdHistory.empty() || cmdHistory.back() != inputCmd) cmdHistory.push_back(inputCmd);
+        if (cmdHistory.size() > kMaxHistory) cmdHistory.erase(cmdHistory.begin());
+        cmdHistoryPos = -1;
+
+        pushLog("> " + inputCmd, sf::Color(180, 180, 180));
+
+        std::string upperCmd;
+        for (char ch : inputCmd) upperCmd.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
+
+        if (upperCmd == "HELP" || upperCmd == "AYUDA" || upperCmd == "?") {
+            for (const auto& c : kGuideCmds)
+                pushLog(std::string(c.syntax) + "  —  " + ui::str(c.desc), sf::Color(200, 200, 215));
+        } else if (upperCmd == "CLEAR" || upperCmd == "LIMPIAR") {
+            consoleLog.clear();
+        } else {
+            try {
+                Tokenizer tz(inputCmd);
+                Parser parser(tz.tokenize());
+                std::map<std::string, std::string> ast = parser.parse();
+
+                std::string result = executor.execute(ast);
+                pushLog(result, sf::Color::Cyan);
+
+                if (ast["operation"] == "DROP" && ast["_table_target"] == selectedTable) {
+                    selectedTable = "";
+                }
+
+                refreshUI();
+            } catch (const std::exception& e) {
+                pushLog(std::string("[Error] ") + e.what(), sf::Color::Red);
+            }
+        }
+    };
 
     sf::Clock deltaClock;
     while (window.isOpen()) {
@@ -188,14 +329,120 @@ int main() {
         }
 
         ImGui::SFML::Update(window, deltaClock.restart());
+
+        // --- Driver del modo demo (antes de construir la UI) ---------------
+        if (!demoSteps.empty()) {
+            ImGuiIO& io = ImGui::GetIO();
+            if (demoEnterPending) {
+                io.AddKeyEvent(ImGuiKey_Enter, false); // soltar Enter al frame siguiente
+                demoEnterPending = false;
+                demoHold = 15;
+            } else if (demoClickPending) {
+                io.AddMouseButtonEvent(0, false); // soltar el click
+                demoClickPending = false;
+                demoIdx++;
+                demoHold = 15;
+            } else if (demoHold > 0) {
+                demoHold--;
+            } else if (demoIdx < demoSteps.size()) {
+                const DemoStep& s = demoSteps[demoIdx];
+                switch (s.kind) {
+                    case DemoStep::TYPE:
+                        if (demoTypeLeft < 0) demoTypeLeft = static_cast<int>(s.arg1.size());
+                        if (demoTypeLeft > 0) {
+                            const size_t idx = s.arg1.size() - static_cast<size_t>(demoTypeLeft);
+                            // Como una pulsación real: ImGui escribe en su estado
+                            // interno del InputText (no tocamos el buffer a mano).
+                            io.AddInputCharacter(static_cast<unsigned int>(
+                                static_cast<unsigned char>(s.arg1[idx])));
+                            demoTypeLeft--;
+                            demoHold = 3; // ritmo de tecleo visible
+                        } else {
+                            demoIdx++;
+                            demoHold = 12;
+                            demoTypeLeft = -1;
+                        }
+                        break;
+                    case DemoStep::ENTER:
+                        // Enter real: el InputText con EnterReturnsTrue ejecuta.
+                        io.AddKeyEvent(ImGuiKey_Enter, true);
+                        demoEnterPending = true;
+                        demoIdx++;
+                        demoHold = 6;
+                        break;
+                    case DemoStep::CLICK: {
+                        const int cx = atoi(s.arg1.c_str()), cy = atoi(s.arg2.c_str());
+                        io.AddMousePosEvent(cx, cy);
+                        io.AddMouseButtonEvent(0, true);
+                        demoClickPending = true;
+                        break;
+                    }
+                    case DemoStep::PAUSE: demoHold = std::max(1, s.ms / 16); demoIdx++; break;
+                    case DemoStep::SHOT:  pendingShot = s.arg1; demoIdx++; demoHold = 10; break;
+                    case DemoStep::GUIDE: showGuide = true; demoIdx++; demoHold = 25; break;
+                    case DemoStep::CLOSE_GUIDE: demoCloseGuide = true; demoIdx++; demoHold = 15; focusTerminal = true; break;
+                    case DemoStep::LANG:
+                        ui::toggleLang(s.arg1 == "EN" ? nexo::Lang::EN : nexo::Lang::ES);
+                        demoIdx++;
+                        demoHold = 25;
+                        break;
+                }
+            } else {
+                // Guion terminado: cerrar la app sola.
+                window.close();
+            }
+        }
+
         ImGui::SetNextWindowPos(ImVec2(0, 0));
         ImGui::SetNextWindowSize(ImVec2((float)window.getSize().x, (float)window.getSize().y));
         ImGui::Begin("NEXO Workspace", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
 
+        // --- Barra superior: título, idioma y ayuda -------------------------
+        ImGui::TextColored(ImVec4(0.2f, 0.8f, 1.0f, 1.0f), "NEXO Workspace");
+        ImGui::SameLine();
+        ImGui::TextDisabled("v1.1");
+
+        const float topRight = ImGui::GetWindowWidth() - 8.0f;
+        const bool esActive = (nexo::lang() == nexo::Lang::ES);
+
+        ImGui::SameLine(topRight - 130.0f);
+        if (esActive) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.16f, 0.45f, 0.75f, 1.0f));
+        if (ImGui::Button("ES", ImVec2(40, 0))) {
+            if (!esActive) {
+                ui::toggleLang(nexo::Lang::ES);
+                pushLog(ui::str(ui::S::LogLangEs), sf::Color(150, 150, 170));
+            }
+        }
+        if (esActive) ImGui::PopStyleColor();
+
+        ImGui::SameLine();
+        if (!esActive) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.16f, 0.45f, 0.75f, 1.0f));
+        if (ImGui::Button("EN", ImVec2(40, 0))) {
+            if (esActive) {
+                ui::toggleLang(nexo::Lang::EN);
+                pushLog(ui::str(ui::S::LogLangEn), sf::Color(150, 150, 170));
+            }
+        }
+        if (!esActive) ImGui::PopStyleColor();
+
+        ImGui::SameLine();
+        if (ImGui::Button("?", ImVec2(40, 0))) showGuide = true;
+
+        // Banner de bienvenida (primer arranque, descartable y persistido).
+        if (!ui::bannerSeen()) {
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.16f, 0.24f, 0.34f, 1.0f));
+            ImGui::BeginChild("##welcome", ImVec2(0, 72), true, ImGuiWindowFlags_NoScrollbar);
+            ImGui::TextWrapped("%s", ui::str(ui::S::BannerText).c_str());
+            ImGui::SetCursorPosX(ImGui::GetWindowWidth() - 110.0f);
+            if (ImGui::SmallButton(ui::str(ui::S::BannerDismiss).c_str())) ui::setBannerSeen(true);
+            ImGui::EndChild();
+            ImGui::PopStyleColor();
+        }
+
         ImGui::Columns(3, "MainLayout", true);
         
-        ImGui::TextColored(ImVec4(0.2f, 0.8f, 1.0f, 1.0f), "EXPLORADOR DE COLECCIONES");
-        if (ImGui::Button("Nueva Colección +", ImVec2(-1, 0))) showCreateModal = true;
+        ImGui::TextColored(ImVec4(0.2f, 0.8f, 1.0f, 1.0f), "%s", ui::str(ui::S::CollectionsExplorer).c_str());
+        if (ImGui::Button(ui::str(ui::S::NewCollectionBtn).c_str(), ImVec2(-1, 0))) showCreateModal = true;
         ImGui::Separator();
         
         ImGui::BeginChild("TableList");
@@ -211,12 +458,12 @@ int main() {
 
         if (selectedTable == "") {
             ImGui::SetCursorPosY(ImGui::GetWindowHeight() / 2);
-            ImGui::TextDisabled(" <- selecciona una coleccion para comenzar");
+            ImGui::TextDisabled("%s", ui::str(ui::S::SelectPrompt).c_str());
         } else {
-            ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.5f, 1.0f), "COLECCIÓN ACTIVA: %s", selectedTable.c_str());
+            ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.5f, 1.0f), "%s", ui::strf(ui::S::ActiveCollection, selectedTable).c_str());
             ImGui::Separator();
 
-            ImGui::Text("Nuevo Documento:");
+            ImGui::Text("%s", ui::str(ui::S::NewDocument).c_str());
             for (auto& f : currentSchema.fieldsList) {
                 if (f == "id") continue; 
                 char buf[256] = "";
@@ -224,7 +471,7 @@ int main() {
                 if (ImGui::InputText(f.c_str(), buf, 256)) formInputs[f] = buf;
             }
             
-            if (ImGui::Button("INSERTAR", ImVec2(100, 30))) {
+            if (ImGui::Button(ui::str(ui::S::InsertBtn).c_str(), ImVec2(100, 30))) {
                 try {
                     formInputs["id"] = std::to_string(currentSchema.nextId);
 
@@ -235,22 +482,22 @@ int main() {
 
                     saveSchema(selectedTable, currentSchema.nextId + 1, currentSchema.fields);
 
-                    consoleLog.push_back({"Registro insertado con ID: " + formInputs["id"], sf::Color::Green});
+                    pushLog(ui::strf(ui::S::LogInsertOk, formInputs["id"]), sf::Color::Green);
                     formInputs.clear();
                     refreshUI();
                 } catch (const std::exception& e) {
-                    consoleLog.push_back({"[Error] " + std::string(e.what()), sf::Color::Red});
+                    pushLog(std::string("[Error] ") + e.what(), sf::Color::Red);
                 }
             }
             ImGui::SameLine();
-            if (ImGui::Button("COMPACTAR", ImVec2(100, 30))) {
+            if (ImGui::Button(ui::str(ui::S::CompactBtn).c_str(), ImVec2(100, 30))) {
                 autoCompact(selectedTable, storage_units, index_map, registros_sucios);
-                consoleLog.push_back({"Colección compactada físicamente y re-indexada.", sf::Color::Cyan});
+                pushLog(ui::str(ui::S::LogCompacted), sf::Color::Cyan);
                 refreshUI(); 
             }
 
             ImGui::Separator();
-            ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.8f, 1.0f), "DOCUMENTOS GUARDADOS:");
+            ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.8f, 1.0f), "%s", ui::str(ui::S::SavedDocs).c_str());
             ImGui::BeginChild("DocExplorer", ImVec2(0, 0), true);
             
             int doc_idx = 0;
@@ -273,35 +520,46 @@ int main() {
         }
         ImGui::NextColumn();
 
-        ImGui::Text("TERMINAL NEXO");
+        ImGui::Text("%s", ui::str(ui::S::TerminalTitle).c_str());
         ImGui::BeginChild("Logs", ImVec2(0, -40), true);
-        for (auto& log : consoleLog) ImGui::TextColored(ImVec4(log.color.r/255.f, log.color.g/255.f, log.color.b/255.f, 1.0f), "%s", log.text.c_str());
+        for (auto& log : consoleLog)
+            ImGui::TextColored(ImVec4(log.color.r/255.f, log.color.g/255.f, log.color.b/255.f, 1.0f),
+                               "%s", log.text.c_str());
         if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) ImGui::SetScrollHereY(1.0f);
         ImGui::EndChild();
 
         ImGui::PushItemWidth(-1);
-        if (ImGui::InputText("##t", terminalBuffer, 1024, ImGuiInputTextFlags_EnterReturnsTrue)) {
-            std::string inputCmd(terminalBuffer);
-            if (!inputCmd.empty()) {
-                consoleLog.push_back({"> " + inputCmd, sf::Color(180, 180, 180)});
 
-                try {
-                    Tokenizer tz(inputCmd);
-                    Parser parser(tz.tokenize());
-                    std::map<std::string, std::string> ast = parser.parse();
+        // Callback del historial: ↑ recorre hacia atrás, ↓ hacia adelante.
+        struct HistCtx { std::vector<std::string>* hist; int* pos; };
+        HistCtx histCtx{&cmdHistory, &cmdHistoryPos};
+        const ImGuiInputTextCallback histCallback = [](ImGuiInputTextCallbackData* data) -> int {
+            HistCtx* c = static_cast<HistCtx*>(data->UserData);
+            if (data->EventFlag != ImGuiInputTextFlags_CallbackHistory || c->hist->empty()) return 0;
 
-                    std::string result = executor.execute(ast);
-                    consoleLog.push_back({result, sf::Color::Cyan});
-                    
-                    if (ast["operation"] == "DROP" && ast["_table_target"] == selectedTable) {
-                        selectedTable = "";
-                    }
-                    
-                    refreshUI(); 
-                } catch (const std::exception& e) {
-                    consoleLog.push_back({"[Error] " + std::string(e.what()), sf::Color::Red});
-                }
+            const int prev = *c->pos;
+            if (data->EventKey == ImGuiKey_UpArrow) {
+                *c->pos = (*c->pos == -1) ? static_cast<int>(c->hist->size()) - 1
+                                          : (*c->pos > 0 ? *c->pos - 1 : 0);
+            } else if (data->EventKey == ImGuiKey_DownArrow) {
+                if (*c->pos == -1) return 0;
+                *c->pos += 1;
+                if (*c->pos >= static_cast<int>(c->hist->size())) *c->pos = -1;
             }
+            if (prev != *c->pos) {
+                const std::string s = (*c->pos == -1) ? std::string() : (*c->hist)[*c->pos];
+                data->DeleteChars(0, data->BufTextLen);
+                data->InsertChars(0, s.c_str());
+            }
+            return 0;
+        };
+
+        if (focusTerminal) { ImGui::SetKeyboardFocusHere(0); focusTerminal = false; }
+
+        if (ImGui::InputText("##t", terminalBuffer, 1024,
+                             ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackHistory,
+                             histCallback, &histCtx)) {
+            ejecutarComando(std::string(terminalBuffer));
             memset(terminalBuffer, 0, 1024);
             ImGui::SetKeyboardFocusHere(-1);
         }
@@ -310,19 +568,24 @@ int main() {
         ImGui::Columns(1);
 
         if (showCreateModal) {
-            ImGui::OpenPopup("Configurar Nueva Colección");
+            ImGui::OpenPopup(ui::str(ui::S::CreateModalTitle).c_str());
             showCreateModal = false;
+            createInvalid = false;
         }
 
-        if (ImGui::BeginPopupModal("Configurar Nueva Colección", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Nombre:"); 
+        if (ImGui::BeginPopupModal(ui::str(ui::S::CreateModalTitle).c_str(), NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("%s", ui::str(ui::S::NameLabel).c_str()); 
             ImGui::InputText("##name", nName, 64);
             
-            ImGui::Text("Campos:");
-            ImGui::InputTextWithHint("##fields", "Ej. nombre, edad, cedula", nFields, 256);
+            ImGui::Text("%s", ui::str(ui::S::FieldsLabel).c_str());
+            ImGui::InputTextWithHint("##fields", ui::str(ui::S::FieldsHint).c_str(), nFields, 256);
+
+            if (createInvalid) {
+                ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s", ui::str(ui::S::CreateInvalid).c_str());
+            }
 
             ImGui::Separator();
-            if (ImGui::Button("OK", ImVec2(120, 0))) {
+            if (ImGui::Button(ui::str(ui::S::OkBtn).c_str(), ImVec2(120, 0))) {
                 if (strlen(nName) > 0 && validateCollectionName(nName) && validateSchemaFields(nFields)) {
                     std::string finalFields = "id";
                     if (strlen(nFields) > 0) finalFields += "," + std::string(nFields);
@@ -333,19 +596,87 @@ int main() {
                     
                     index_map[nName]["id"] = new IndexManager("data/" + std::string(nName) + "_id.idx", 3);
                     
-                    consoleLog.push_back({"Colección '" + std::string(nName) + "' lista.", sf::Color::Green});
+                    pushLog(ui::strf(ui::S::LogCollectionReady, nName), sf::Color::Green);
                     memset(nName, 0, 64); memset(nFields, 0, 256);
                     ImGui::CloseCurrentPopup();
+                } else {
+                    createInvalid = true;
                 }
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancelar", ImVec2(120, 0))) ImGui::CloseCurrentPopup();
+            if (ImGui::Button(ui::str(ui::S::CancelBtn).c_str(), ImVec2(120, 0))) ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
+
+        // --- Modal GUÍA -----------------------------------------------------
+        if (showGuide) {
+            ImGui::OpenPopup(ui::str(ui::S::GuideTitle).c_str());
+            showGuide = false;
+        }
+
+        if (ImGui::BeginPopupModal(ui::str(ui::S::GuideTitle).c_str(), NULL,
+                                   ImGuiWindowFlags_AlwaysAutoResize)) {
+            if (demoCloseGuide) { ImGui::CloseCurrentPopup(); demoCloseGuide = false; }
+            ImGui::BeginChild("##guideBody", ImVec2(700, 420), true);
+            if (ImGui::BeginTabBar("##guideTabs")) {
+                if (ImGui::BeginTabItem(ui::str(ui::S::GuideTabStart).c_str())) {
+                    ImGui::TextWrapped("%s", ui::str(ui::S::GuideStartText).c_str());
+                    ImGui::EndTabItem();
+                }
+                if (ImGui::BeginTabItem(ui::str(ui::S::GuideTabCmds).c_str())) {
+                    if (ImGui::BeginTable("##guideCmds", 3,
+                                          ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH |
+                                          ImGuiTableFlags_ScrollY)) {
+                        ImGui::TableSetupScrollFreeze(0, 1);
+                        ImGui::TableSetupColumn(ui::str(ui::S::GuideColCmd).c_str(),
+                                                ImGuiTableColumnFlags_WidthFixed, 280.0f);
+                        ImGui::TableSetupColumn(ui::str(ui::S::GuideColDesc).c_str(),
+                                                ImGuiTableColumnFlags_WidthStretch);
+                        ImGui::TableSetupColumn("##go", ImGuiTableColumnFlags_NoHide, 70.0f);
+                        ImGui::TableHeadersRow();
+
+                        for (const auto& c : kGuideCmds) {
+                            ImGui::TableNextRow();
+                            ImGui::TableSetColumnIndex(0);
+                            ImGui::TextWrapped("%s", c.syntax);
+                            ImGui::TableSetColumnIndex(1);
+                            ImGui::TextWrapped("%s", ui::str(c.desc).c_str());
+                            ImGui::TableSetColumnIndex(2);
+                            if (ImGui::SmallButton(ui::str(ui::S::GuideTryBtn).c_str())) {
+                                snprintf(terminalBuffer, sizeof(terminalBuffer), "%s", c.example);
+                                focusTerminal = true;
+                                ImGui::CloseCurrentPopup();
+                            }
+                        }
+                        ImGui::EndTable();
+                    }
+                    ImGui::EndTabItem();
+                }
+                if (ImGui::BeginTabItem(ui::str(ui::S::GuideTabKeys).c_str())) {
+                    ImGui::TextWrapped("%s", ui::str(ui::S::GuideKeysText).c_str());
+                    ImGui::EndTabItem();
+                }
+                ImGui::EndTabBar();
+            }
+            ImGui::EndChild();
+
+            ImGui::Separator();
+            if (ImGui::Button(ui::str(ui::S::CancelBtn).c_str(), ImVec2(120, 0))) ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
 
         ImGui::End();
         window.clear(sf::Color(25, 25, 28));
         ImGui::SFML::Render(window);
+        // Captura del frame renderizado (modo demo): la textura debe tener
+        // el tamaño de la ventana antes de copiar el framebuffer.
+        if (!pendingShot.empty()) {
+            sf::Texture tex(window.getSize());
+            tex.update(window);
+            sf::Image img = tex.copyToImage();
+            img.saveToFile("data/shots/" + pendingShot + ".png");
+            pendingShot.clear();
+        }
         window.display();
     }
 

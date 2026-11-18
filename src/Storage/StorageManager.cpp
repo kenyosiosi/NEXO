@@ -1,4 +1,5 @@
 #include "../../include/Storage/StorageManager.h"
+#include "Core/Messages.h"
 #include <cstring>
 #include <algorithm>
 #include <iostream>
@@ -46,9 +47,9 @@ RecordPointer StorageManager::insertRecord(const std::map<std::string, std::stri
     if (8 + data_size > PAGE_USABLE) {
         // Un registro que no cabe ni en una página vacía provocaría una
         // recursión infinita buscando espacio: se rechaza de forma explícita.
-        throw std::runtime_error("El registro (" + std::to_string(data_size) +
-                                 " bytes) excede el máximo por página (" +
-                                 std::to_string(PAGE_USABLE - 8) + " bytes).");
+        throw std::runtime_error(nexo::msg(nexo::Msg::RecordTooBig,
+                                           std::to_string(data_size),
+                                           std::to_string(PAGE_USABLE - 8)));
     }
 
     int slot_count, free_space_offset;

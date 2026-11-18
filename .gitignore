@@ -51,3 +51,11 @@ data/*.schema
 .DS_Store
 Thumbs.db
 *.log
+
+# --- Estado local de la app (no versionar) ---
+# idioma y banner de bienvenida elegidos por el usuario
+data/ui.cfg
+# capturas generadas por el modo demo
+data/shots/
+# layout persistido de ImGui
+imgui.ini
