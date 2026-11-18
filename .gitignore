@@ -22,12 +22,8 @@ Makefile
 *.exp
 
 # --- Dependencias Externas ---
-# No subimos las carpetas que descargan setup_win.sh y setup_linux.sh
-libs/SFML-2.6.1/
-libs/imgui/
-libs/imgui-sfml/
-# Si quieres ignorar TODO dentro de libs excepto tus propios archivos:
-# libs/*
+# Se descargan automaticamente con FetchContent en el momento de configurar
+# el build, por lo que no se versionan ni requieren carpetas locales.
 
 # --- Archivos de Datos del Motor ---
 # Ignoramos los datos generados en runtime (.bin, .idx, .schema)
