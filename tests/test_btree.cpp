@@ -96,3 +96,41 @@ TEST_CASE("B-Tree: the tree survives a close/reopen cycle") {
         CHECK(idx.findOne("999").page_id == -1);
     }
 }
+
+TEST_CASE("B-Tree: the degree is honored and larger trees stay consistent") {
+    clean();
+    const std::string path = "data/nexotest_btree_t8.idx";
+    {
+        IndexManager idx(path, 8);
+        CHECK(idx.getDegree() == 8);
+        for (int i = 1; i <= 500; ++i) idx.insert(std::to_string(i), { i, i });
+    }
+    {
+        IndexManager idx(path, 3); // el grado del archivo manda sobre el parámetro
+        CHECK(idx.getDegree() == 8);
+        for (int i = 1; i <= 500; ++i) {
+            const RecordPointer p = idx.findOne(std::to_string(i));
+            CHECK(p.page_id == i);
+        }
+        CHECK(idx.findOne("501").page_id == -1);
+    }
+    std::error_code ec;
+    fs::remove(path, ec);
+}
+
+TEST_CASE("B-Tree: reopening after page splits keeps the tree usable") {
+    // El contador de páginas nuevas debe persistirse en cada split: si no, al
+    // reabrir el archivo el índice reutiliza páginas ocupadas y se corrompe.
+    clean();
+    {
+        IndexManager idx(kIdxPath, 3);
+        for (int i = 1; i <= 100; ++i) idx.insert(std::to_string(i), { i, i });
+    }
+    {
+        IndexManager idx(kIdxPath, 3);
+        for (int i = 101; i <= 200; ++i) idx.insert(std::to_string(i), { i, i });
+        for (int i = 1; i <= 200; ++i) {
+            CHECK(idx.findOne(std::to_string(i)).page_id == i);
+        }
+    }
+}
