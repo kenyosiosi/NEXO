@@ -74,6 +74,11 @@ void autoCompact(std::string tableName,
     registros_sucios[tableName] = 0;
 }
 
+// Layout del área de trabajo (en píxeles de la ventana).
+constexpr float kSidebarWidth = 230.0f;
+constexpr float kTerminalHeight = 208.0f;
+constexpr float kStatusBarHeight = 26.0f;
+
 // Comandos de la guía: sintaxis universal + ejemplo ejecutable ("Probar").
 struct GuideCmd {
     const char* syntax;
@@ -474,22 +479,36 @@ int main() {
             ImGui::PopStyleColor();
         }
 
-        ImGui::Columns(3, "MainLayout", true);
-        
-        ImGui::TextColored(ImVec4(0.2f, 0.8f, 1.0f, 1.0f), "%s", ui::str(ui::S::CollectionsExplorer).c_str());
-        if (ImGui::Button(ui::str(ui::S::NewCollectionBtn).c_str(), ImVec2(-1, 0))) showCreateModal = true;
-        ImGui::Separator();
-        
-        ImGui::BeginChild("TableList");
-        for (auto const& [name, ptr] : storage_units) {
-            if (ImGui::Selectable(name.c_str(), selectedTable == name)) {
-                selectedTable = name;
-                formInputs.clear();
-                refreshUI(); 
+        // --- Cuerpo: explorador de ancho fijo (230 px) + área de trabajo ---
+        // Tabla en lugar de Columns: la barra lateral no se reparte el espacio
+        // con el contenido y el separador se puede arrastrar.
+        ImGui::BeginChild("##body", ImVec2(0, -kStatusBarHeight), false);
+        if (ImGui::BeginTable("##layout", 2,
+                              ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV |
+                              ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("##sidebar", ImGuiTableColumnFlags_WidthFixed, kSidebarWidth);
+            ImGui::TableSetupColumn("##work", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableNextRow();
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextColored(ImVec4(0.2f, 0.8f, 1.0f, 1.0f), "%s", ui::str(ui::S::CollectionsExplorer).c_str());
+            if (ImGui::Button(ui::str(ui::S::NewCollectionBtn).c_str(), ImVec2(-1, 0))) showCreateModal = true;
+            ImGui::Separator();
+
+            ImGui::BeginChild("TableList");
+            for (auto const& [name, ptr] : storage_units) {
+                if (ImGui::Selectable(name.c_str(), selectedTable == name)) {
+                    selectedTable = name;
+                    formInputs.clear();
+                    editing = false;
+                    refreshUI(); 
+                }
             }
-        }
-        ImGui::EndChild();
-        ImGui::NextColumn();
+            ImGui::EndChild();
+
+            ImGui::TableSetColumnIndex(1);
+            // Documentos arriba; la terminal ocupa una franja fija abajo.
+            ImGui::BeginChild("##docsPane", ImVec2(0, -kTerminalHeight), false);
 
         if (selectedTable == "") {
             ImGui::SetCursorPosY(ImGui::GetWindowHeight() / 2);
@@ -509,11 +528,24 @@ int main() {
                     } else {
                         ImGui::Text("%s", ui::str(ui::S::NewDocument).c_str());
                     }
-                    for (auto& f : currentSchema.fieldsList) {
-                        if (f == "id") continue; 
-                        char buf[256] = "";
-                        if (formInputs.count(f)) strcpy(buf, formInputs[f].c_str());
-                        if (ImGui::InputText(f.c_str(), buf, 256)) formInputs[f] = buf;
+                    // Formulario: etiqueta a la izquierda y campo de ancho fijo;
+                    // así los nombres no se pegan al borde de la ventana.
+                    if (ImGui::BeginTable("##form", 2, ImGuiTableFlags_SizingFixedFit)) {
+                        ImGui::TableSetupColumn("##lbl", ImGuiTableColumnFlags_WidthFixed, 84.0f);
+                        ImGui::TableSetupColumn("##in", ImGuiTableColumnFlags_WidthFixed, 340.0f);
+                        for (auto& f : currentSchema.fieldsList) {
+                            if (f == "id") continue;
+                            ImGui::TableNextRow();
+                            ImGui::TableSetColumnIndex(0);
+                            ImGui::AlignTextToFramePadding();
+                            ImGui::TextUnformatted(f.c_str());
+                            ImGui::TableSetColumnIndex(1);
+                            char buf[256] = "";
+                            if (formInputs.count(f)) strcpy(buf, formInputs[f].c_str());
+                            ImGui::SetNextItemWidth(-FLT_MIN);
+                            if (ImGui::InputText(("##f_" + f).c_str(), buf, 256)) formInputs[f] = buf;
+                        }
+                        ImGui::EndTable();
                     }
                     
                     const std::string primaryLabel = editing ? ui::str(ui::S::UpdateBtn)
@@ -708,10 +740,12 @@ int main() {
                 ImGui::EndTabBar();
             }
         }
-        ImGui::NextColumn();
+        ImGui::EndChild(); // ##docsPane
 
-        ImGui::Text("%s", ui::str(ui::S::TerminalTitle).c_str());
-        ImGui::BeginChild("Logs", ImVec2(0, -40), true);
+        // --- Terminal (franja inferior del área de trabajo) ---------------
+        ImGui::BeginChild("##terminalPane", ImVec2(0, 0), true);
+        ImGui::TextColored(ImVec4(0.55f, 0.75f, 1.0f, 1.0f), "%s", ui::str(ui::S::TerminalTitle).c_str());
+        ImGui::BeginChild("Logs", ImVec2(0, -ImGui::GetFrameHeightWithSpacing() - 4), false);
         for (auto& log : consoleLog)
             ImGui::TextColored(ImVec4(log.color.r/255.f, log.color.g/255.f, log.color.b/255.f, 1.0f),
                                "%s", log.text.c_str());
@@ -754,8 +788,26 @@ int main() {
             ImGui::SetKeyboardFocusHere(-1);
         }
         ImGui::PopItemWidth();
+        ImGui::EndChild(); // ##terminalPane
 
-        ImGui::Columns(1);
+        ImGui::EndTable();
+        }
+        ImGui::EndChild(); // ##body
+
+        // --- Barra de estado ----------------------------------------------
+        {
+            const std::string binName = selectedTable.empty() ? "" : selectedTable + ".bin";
+            ImGui::TextDisabled("%s", ui::strf(ui::S::StatusData, binName).c_str());
+            ImGui::SameLine();
+            ImGui::TextDisabled("·");
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", ui::strf(ui::S::StatusCollections,
+                                               std::to_string(storage_units.size())).c_str());
+            const char* langTag = (nexo::lang() == nexo::Lang::ES) ? "ES" : "EN";
+            const float tagW = ImGui::CalcTextSize(langTag).x;
+            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - tagW);
+            ImGui::TextDisabled("%s", langTag);
+        }
 
         if (showCreateModal) {
             ImGui::OpenPopup(ui::str(ui::S::CreateModalTitle).c_str());
@@ -822,7 +874,9 @@ int main() {
                                                 ImGuiTableColumnFlags_WidthFixed, 280.0f);
                         ImGui::TableSetupColumn(ui::str(ui::S::GuideColDesc).c_str(),
                                                 ImGuiTableColumnFlags_WidthStretch);
-                        ImGui::TableSetupColumn("##go", ImGuiTableColumnFlags_NoHide, 70.0f);
+                        ImGui::TableSetupColumn("##go",
+                                                ImGuiTableColumnFlags_NoHide |
+                                                ImGuiTableColumnFlags_WidthFixed, 80.0f);
                         ImGui::TableHeadersRow();
 
                         for (const auto& c : kGuideCmds) {
