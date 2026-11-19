@@ -163,15 +163,29 @@ int main() {
         if (icon.loadFromFile(logo)) window.setIcon(icon.getSize(), icon.getPixelsPtr());
     }
 
-    if (!ImGui::SFML::Init(window)) return -1;
+    // Init sin la fuente por defecto: así el atlas se construye una sola vez y
+    // ya con JetBrains Mono. Si Init() lo construye con la fuente embebida, la
+    // TTF se añade después y el texto acaba dibujándose con la de reserva (otro
+    // tamaño, sin guiones tipográficos ni flechas).
+    if (!ImGui::SFML::Init(window, false)) return -1;
 
-    // Fuente con cobertura Latin (acentos/ñ). ImGui usa por defecto una fuente
-    // ASCII-only que corrompe el texto en español.
-    if (const std::string font_path = localizarAsset("assets/fonts/JetBrainsMono-Regular.ttf"); !font_path.empty()) {
+    {
         ImGuiIO& io = ImGui::GetIO();
-        if (io.Fonts->AddFontFromFileTTF(font_path.c_str(), 17.0f)) {
-            ImGui::SFML::UpdateFontTexture();
-        }
+        // Rangos explícitos: Latin-1 (acentos, ñ, ¿, ¡) más guiones
+        // tipográficos, viñetas y flechas que usa la ayuda en pantalla.
+        static const ImWchar kGlyphRanges[] = {
+            0x0020, 0x00FF, // Latin básico + suplemento
+            0x2010, 0x2027, // guion, comillas tipográficas, puntos suspensivos, viñeta
+            0x2190, 0x21FF, // flechas (↑ ↓ → ←)
+            0x25A0, 0x25FF, // formas geométricas
+            0,
+        };
+        const std::string font_path = localizarAsset("assets/fonts/JetBrainsMono-Regular.ttf");
+        const bool loaded = !font_path.empty() &&
+            io.Fonts->AddFontFromFileTTF(font_path.c_str(), 17.0f, nullptr, kGlyphRanges) != nullptr;
+        if (!loaded) io.Fonts->AddFontDefault(); // nunca dejar el atlas vacío
+        if (!ImGui::SFML::UpdateFontTexture())
+            std::cerr << "[Nexo] no se pudo subir el atlas de fuentes\n";
     }
 
     std::map<std::string, StorageManager*> storage_units;
@@ -275,9 +289,13 @@ int main() {
     if (const char* d = std::getenv("NEXO_DEMO_SCRIPT")) demoSteps = parseDemoScript(d);
     size_t demoIdx = 0;
     int demoHold = 45;         // frames de gracia antes del primer paso
-    std::string demoTyped;     // texto restante del paso TYPE
     int demoTypeLeft = -1;     // caracteres que faltan por teclear (-1 = paso sin iniciar)
-    bool demoClickPending = false;  // soltar el botón en el frame siguiente
+    // Un click real necesita varios frames: ImGui calcula el item bajo el cursor
+    // antes de ver la pulsación, así que posicionamos, esperamos y pulsamos.
+    int demoClickPhase = 0;    // 0 = inactivo, 1 = posicionando, 2 = pulsado, 3 = soltar
+    int demoClickX = 0;
+    int demoClickY = 0;
+    int demoClickWait = 0;
     bool demoEnterPending = false;  // soltar Enter en el frame siguiente
     std::string pendingShot;   // captura solicitada para el final del frame
     if (!fs::exists("data/shots")) fs::create_directory("data/shots");
@@ -337,9 +355,18 @@ int main() {
                 io.AddKeyEvent(ImGuiKey_Enter, false); // soltar Enter al frame siguiente
                 demoEnterPending = false;
                 demoHold = 15;
-            } else if (demoClickPending) {
+            } else if (demoClickPhase == 1) {
+                // Cursor quieto sobre el objetivo para que ImGui lo marque hovered.
+                io.AddMousePosEvent(static_cast<float>(demoClickX), static_cast<float>(demoClickY));
+                if (--demoClickWait <= 0) demoClickPhase = 2;
+            } else if (demoClickPhase == 2) {
+                io.AddMousePosEvent(static_cast<float>(demoClickX), static_cast<float>(demoClickY));
+                io.AddMouseButtonEvent(0, true);
+                demoClickPhase = 3;
+            } else if (demoClickPhase == 3) {
+                io.AddMousePosEvent(static_cast<float>(demoClickX), static_cast<float>(demoClickY));
                 io.AddMouseButtonEvent(0, false); // soltar el click
-                demoClickPending = false;
+                demoClickPhase = 0;
                 demoIdx++;
                 demoHold = 15;
             } else if (demoHold > 0) {
@@ -371,10 +398,10 @@ int main() {
                         demoHold = 6;
                         break;
                     case DemoStep::CLICK: {
-                        const int cx = atoi(s.arg1.c_str()), cy = atoi(s.arg2.c_str());
-                        io.AddMousePosEvent(cx, cy);
-                        io.AddMouseButtonEvent(0, true);
-                        demoClickPending = true;
+                        demoClickX = atoi(s.arg1.c_str());
+                        demoClickY = atoi(s.arg2.c_str());
+                        demoClickPhase = 1;
+                        demoClickWait = 3; // frames de hover antes de pulsar
                         break;
                     }
                     case DemoStep::PAUSE: demoHold = std::max(1, s.ms / 16); demoIdx++; break;
@@ -463,60 +490,151 @@ int main() {
             ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.5f, 1.0f), "%s", ui::strf(ui::S::ActiveCollection, selectedTable).c_str());
             ImGui::Separator();
 
-            ImGui::Text("%s", ui::str(ui::S::NewDocument).c_str());
-            for (auto& f : currentSchema.fieldsList) {
-                if (f == "id") continue; 
-                char buf[256] = "";
-                if (formInputs.count(f)) strcpy(buf, formInputs[f].c_str());
-                if (ImGui::InputText(f.c_str(), buf, 256)) formInputs[f] = buf;
-            }
-            
-            if (ImGui::Button(ui::str(ui::S::InsertBtn).c_str(), ImVec2(100, 30))) {
-                try {
-                    formInputs["id"] = std::to_string(currentSchema.nextId);
+            if (ImGui::BeginTabBar("##collectionTabs")) {
+                // ---------------- Documentos ----------------
+                if (ImGui::BeginTabItem(ui::str(ui::S::TabDocs).c_str())) {
+                    ImGui::Text("%s", ui::str(ui::S::NewDocument).c_str());
+                    for (auto& f : currentSchema.fieldsList) {
+                        if (f == "id") continue; 
+                        char buf[256] = "";
+                        if (formInputs.count(f)) strcpy(buf, formInputs[f].c_str());
+                        if (ImGui::InputText(f.c_str(), buf, 256)) formInputs[f] = buf;
+                    }
+                    
+                    if (ImGui::Button(ui::str(ui::S::InsertBtn).c_str(), ImVec2(100, 30))) {
+                        try {
+                            formInputs["id"] = std::to_string(currentSchema.nextId);
 
-                    RecordPointer ptr = storage_units[selectedTable]->insertRecord(formInputs);
-                    for (auto const& [field, idx] : index_map[selectedTable]) {
-                        if (formInputs.count(field)) idx->insert(formInputs[field], ptr);
+                            RecordPointer ptr = storage_units[selectedTable]->insertRecord(formInputs);
+                            for (auto const& [field, idx] : index_map[selectedTable]) {
+                                if (formInputs.count(field)) idx->insert(formInputs[field], ptr);
+                            }
+
+                            saveSchema(selectedTable, currentSchema.nextId + 1, currentSchema.fields);
+
+                            pushLog(ui::strf(ui::S::LogInsertOk, formInputs["id"]), sf::Color::Green);
+                            formInputs.clear();
+                            refreshUI();
+                        } catch (const std::exception& e) {
+                            pushLog(std::string("[Error] ") + e.what(), sf::Color::Red);
+                        }
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button(ui::str(ui::S::CompactBtn).c_str(), ImVec2(100, 30))) {
+                        autoCompact(selectedTable, storage_units, index_map, registros_sucios);
+                        pushLog(ui::str(ui::S::LogCompacted), sf::Color::Cyan);
+                        refreshUI(); 
                     }
 
-                    saveSchema(selectedTable, currentSchema.nextId + 1, currentSchema.fields);
+                    ImGui::Separator();
+                    ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.8f, 1.0f), "%s", ui::str(ui::S::SavedDocs).c_str());
+                    ImGui::BeginChild("DocExplorer", ImVec2(0, 0), true);
+                    
+                    int doc_idx = 0;
+                    for (auto& row : currentRecords) {
+                        std::string header = "Doc [" + std::to_string(row.first.page_id) + ":" + std::to_string(row.first.slot_offset) + "]";
+                        if (row.second.count("id")) header += " | ID: " + row.second["id"];
 
-                    pushLog(ui::strf(ui::S::LogInsertOk, formInputs["id"]), sf::Color::Green);
-                    formInputs.clear();
-                    refreshUI();
-                } catch (const std::exception& e) {
-                    pushLog(std::string("[Error] ") + e.what(), sf::Color::Red);
+                        if (ImGui::TreeNode((void*)(intptr_t)doc_idx, "%s", header.c_str())) {
+                            for (auto const& [k, v] : row.second) {
+                                ImGui::TextColored(ImVec4(0.5f, 0.9f, 0.5f, 1.0f), "\"%s\":", k.c_str());
+                                ImGui::SameLine();
+                                ImGui::Text("\"%s\"", v.c_str());
+                            }
+                            ImGui::TreePop();
+                        }
+                        ImGui::Separator();
+                        doc_idx++;
+                    }
+                    ImGui::EndChild();
+                    ImGui::EndTabItem();
                 }
-            }
-            ImGui::SameLine();
-            if (ImGui::Button(ui::str(ui::S::CompactBtn).c_str(), ImVec2(100, 30))) {
-                autoCompact(selectedTable, storage_units, index_map, registros_sucios);
-                pushLog(ui::str(ui::S::LogCompacted), sf::Color::Cyan);
-                refreshUI(); 
-            }
 
-            ImGui::Separator();
-            ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.8f, 1.0f), "%s", ui::str(ui::S::SavedDocs).c_str());
-            ImGui::BeginChild("DocExplorer", ImVec2(0, 0), true);
-            
-            int doc_idx = 0;
-            for (auto& row : currentRecords) {
-                std::string header = "Doc [" + std::to_string(row.first.page_id) + ":" + std::to_string(row.first.slot_offset) + "]";
-                if (row.second.count("id")) header += " | ID: " + row.second["id"];
+                // ---------------- Estadísticas ----------------
+                if (ImGui::BeginTabItem(ui::str(ui::S::TabStats).c_str())) {
+                    const StorageStats st = storage_units[selectedTable]->getStats();
+                    const float frag = (st.totalSlots > 0)
+                        ? static_cast<float>(st.dead) / static_cast<float>(st.totalSlots)
+                        : 0.0f;
+                    const std::string bin_path = "data/" + selectedTable + ".bin";
+                    std::error_code ec;
+                    const auto bytes = fs::exists(bin_path, ec) ? fs::file_size(bin_path, ec) : 0;
 
-                if (ImGui::TreeNode((void*)(intptr_t)doc_idx, "%s", header.c_str())) {
-                    for (auto const& [k, v] : row.second) {
-                        ImGui::TextColored(ImVec4(0.5f, 0.9f, 0.5f, 1.0f), "\"%s\":", k.c_str());
+                    ImGui::Text("%s %d", ui::str(ui::S::StatPages).c_str(), st.pages);
+                    ImGui::Text("%s %zu", ui::str(ui::S::StatSlots).c_str(), st.totalSlots);
+                    ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "%s %zu",
+                                       ui::str(ui::S::StatLive).c_str(), st.live);
+                    ImGui::TextColored(ImVec4(0.95f, 0.65f, 0.25f, 1.0f), "%s %zu",
+                                       ui::str(ui::S::StatDead).c_str(), st.dead);
+
+                    char frag_buf[32];
+                    snprintf(frag_buf, sizeof(frag_buf), "%.1f %%", frag * 100.0f);
+                    ImGui::Text("%s", ui::str(ui::S::StatFrag).c_str());
+                    ImGui::ProgressBar(frag, ImVec2(-1, 18), frag_buf);
+
+                    ImGui::Text("%s %.1f KB", ui::str(ui::S::StatSize).c_str(),
+                                static_cast<double>(bytes) / 1024.0);
+                    ImGui::EndTabItem();
+                }
+
+                // ---------------- Índices ----------------
+                if (ImGui::BeginTabItem(ui::str(ui::S::TabIndexes).c_str())) {
+                    ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.8f, 1.0f), "%s",
+                                       ui::str(ui::S::IndexListTitle).c_str());
+
+                    std::string dropField;
+                    for (auto& [field, mgr] : index_map[selectedTable]) {
+                        ImGui::PushID(field.c_str());
+                        ImGui::BulletText("%s — %s", field.c_str(),
+                                          ui::strf(ui::S::IndexDegree, std::to_string(mgr->getDegree())).c_str());
+                        // El índice 'id' es estructural (DELETE/UPDATE lo usan).
+                        if (field != "id") {
+                            ImGui::SameLine();
+                            if (ImGui::SmallButton(ui::str(ui::S::IndexDropBtn).c_str())) dropField = field;
+                        }
+                        ImGui::PopID();
+                    }
+                    if (!dropField.empty()) {
+                        delete index_map[selectedTable][dropField];
+                        index_map[selectedTable].erase(dropField);
+                        fs::remove("data/" + selectedTable + "_" + dropField + ".idx");
+                        pushLog(ui::strf(ui::S::LogIndexDropped, dropField), sf::Color(240, 200, 80));
+                    }
+
+                    ImGui::Separator();
+                    std::vector<std::string> candidates;
+                    for (auto& f : currentSchema.fieldsList) {
+                        if (!index_map[selectedTable].count(f)) candidates.push_back(f);
+                    }
+
+                    if (candidates.empty()) {
+                        ImGui::TextDisabled("%s", ui::str(ui::S::IndexNoFields).c_str());
+                    } else {
+                        static int candidateIdx = 0;
+                        if (candidateIdx >= static_cast<int>(candidates.size())) candidateIdx = 0;
+
+                        ImGui::SetNextItemWidth(-120);
+                        if (ImGui::BeginCombo("##idxfield", candidates[candidateIdx].c_str())) {
+                            for (int i = 0; i < static_cast<int>(candidates.size()); ++i) {
+                                if (ImGui::Selectable(candidates[i].c_str(), i == candidateIdx)) candidateIdx = i;
+                            }
+                            ImGui::EndCombo();
+                        }
                         ImGui::SameLine();
-                        ImGui::Text("\"%s\"", v.c_str());
+                        if (ImGui::Button(ui::str(ui::S::IndexCreateBtn).c_str())) {
+                            std::map<std::string, std::string> ast = {
+                                {"operation", "INDEX"},
+                                {"field", candidates[candidateIdx]},
+                                {"_table_target", selectedTable},
+                            };
+                            pushLog(executor.execute(ast), sf::Color::Cyan);
+                            candidateIdx = 0;
+                        }
                     }
-                    ImGui::TreePop();
+                    ImGui::EndTabItem();
                 }
-                ImGui::Separator();
-                doc_idx++;
+                ImGui::EndTabBar();
             }
-            ImGui::EndChild();
         }
         ImGui::NextColumn();
 
@@ -674,7 +792,8 @@ int main() {
             sf::Texture tex(window.getSize());
             tex.update(window);
             sf::Image img = tex.copyToImage();
-            img.saveToFile("data/shots/" + pendingShot + ".png");
+            if (!img.saveToFile("data/shots/" + pendingShot + ".png"))
+                std::cerr << "[Nexo] no se pudo guardar la captura " << pendingShot << "\n";
             pendingShot.clear();
         }
         window.display();

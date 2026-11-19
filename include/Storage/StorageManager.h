@@ -8,6 +8,14 @@
 #include <string>
 #include <vector>
 
+// Resumen de ocupación física de una colección, para el panel de estadísticas.
+struct StorageStats {
+    int pages = 0;          // páginas de datos en uso (sin contar la página 0 de metadatos)
+    size_t totalSlots = 0;  // slots reservados en todas las páginas
+    size_t live = 0;        // slots con un registro vivo
+    size_t dead = 0;        // slots con tombstone (borrados lógicamente)
+};
+
 class StorageManager {
 private:
     HeapFile dataFile;   
@@ -25,6 +33,7 @@ public:
     int getLastPageId() { return current_page_id; } // para reconstruir índices
     void logicalDelete(RecordPointer pointer);
     std::vector<std::pair<RecordPointer, std::map<std::string, std::string>>> scanAll();
+    StorageStats getStats();
 };
 
 #endif

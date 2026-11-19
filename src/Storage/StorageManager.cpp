@@ -138,8 +138,7 @@ void StorageManager::logicalDelete(RecordPointer pointer) {
 }
 
 // Escaneo completo para índices retroactivos
-std::vector<std::pair<RecordPointer, std::map<std::string, std::string>>> StorageManager::scanAll() {
-    std::vector<std::pair<RecordPointer, std::map<std::string, std::string>>> all_records;
+std::vector<std::pair<RecordPointer, std::map<std::string, std::string>>> StorageManager::scanAll() {    std::vector<std::pair<RecordPointer, std::map<std::string, std::string>>> all_records;
     for (int p = 1; p <= current_page_id; p++) {
         std::vector<char> page = dataFile.readPage(p);
         if (page.empty()) continue;
@@ -156,4 +155,36 @@ std::vector<std::pair<RecordPointer, std::map<std::string, std::string>>> Storag
         }
     }
     return all_records;
+}
+
+// Estadísticas de ocupación: recorre cabeceras y slots sin deserializar cada
+// registro, así el panel de la UI puede refrescarse en cada frame.
+StorageStats StorageManager::getStats() {
+    StorageStats stats;
+    for (int p = 1; p <= current_page_id; p++) {
+        std::vector<char> page = dataFile.readPage(p);
+        if (page.empty()) continue;
+
+        int slot_count;
+        memcpy(&slot_count, &page[4], 4);
+        slot_count = std::max(0, std::min(slot_count, (PAGE_SIZE - 16) / 8));
+
+        stats.pages++;
+        stats.totalSlots += static_cast<size_t>(slot_count);
+
+        for (int s = 0; s < slot_count; s++) {
+            const int slot_pos = 16 + (s * 8);
+            int data_offset, data_size;
+            memcpy(&data_offset, &page[slot_pos], 4);
+            memcpy(&data_size, &page[slot_pos + 4], 4);
+
+            // Misma validación que getRecord: un slot corrupto cuenta como muerto.
+            const bool alive = data_size > 0 && data_offset >= 0 &&
+                               data_offset <= PAGE_SIZE && data_size <= PAGE_SIZE &&
+                               data_offset + data_size <= PAGE_SIZE;
+            if (alive) stats.live++;
+            else stats.dead++;
+        }
+    }
+    return stats;
 }

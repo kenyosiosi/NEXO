@@ -9,7 +9,7 @@ namespace {
 struct Entry { const char* es; const char* en; };
 
 // Tabla indexada por S. Los textos con {n} se formatean en strf().
-const std::array<Entry, 71> kCatalog = {{
+const std::array<Entry, 72> kCatalog = {{
     /* GuideTitle        */ {"Guía de NEXO", "NEXO Guide"},
     /* GuideTabStart     */ {"Primeros pasos", "Getting started"},
     /* GuideTabCmds      */ {"Comandos", "Commands"},
@@ -118,6 +118,7 @@ const std::array<Entry, 71> kCatalog = {{
                            "Drops the collection and all its files."},
     /* CmdHelpDesc       */ {"Muestra esta lista de comandos.",
                            "Shows this command list."},
+    /* LogIndexDropped   */ {"Índice '{0}' eliminado.", "Index '{0}' dropped."},
 }};
 
 bool g_bannerSeen = false;

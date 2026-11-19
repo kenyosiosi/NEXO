@@ -89,6 +89,7 @@ enum class S {
     CmdDefineDesc,
     CmdDropDesc,
     CmdHelpDesc,
+    LogIndexDropped,       // {0} = campo
 };
 
 // Texto del id en el idioma activo de la UI.

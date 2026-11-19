@@ -175,3 +175,43 @@ TEST_CASE("StorageManager: a record that cannot fit any page is rejected") {
     const RecordPointer ok = sm.insertRecord(makeRecord("1", "a", "1"));
     CHECK(sm.getRecord(ok).at("id") == "1");
 }
+
+TEST_CASE("StorageManager: getStats counts pages, slots and tombstones") {
+    clean("nexotest_stats");
+    StorageManager sm(kDataDir + "/nexotest_stats.bin");
+
+    // Colección nueva: una página vacía, sin slots todavía.
+    StorageStats empty = sm.getStats();
+    CHECK(empty.pages == 1);
+    CHECK(empty.totalSlots == 0);
+    CHECK(empty.live == 0);
+    CHECK(empty.dead == 0);
+
+    const RecordPointer p1 = sm.insertRecord(makeRecord("1", "a", "1"));
+    sm.insertRecord(makeRecord("2", "b", "2"));
+    sm.insertRecord(makeRecord("3", "c", "3"));
+    sm.logicalDelete(p1);
+
+    const StorageStats st = sm.getStats();
+    CHECK(st.pages == 1);
+    CHECK(st.totalSlots == 3);
+    CHECK(st.live == 2);
+    CHECK(st.dead == 1);
+    CHECK(st.live + st.dead == st.totalSlots);
+}
+
+TEST_CASE("StorageManager: getStats adds up slots across several pages") {
+    clean("nexotest_stats_pages");
+    StorageManager sm(kDataDir + "/nexotest_stats_pages.bin");
+
+    const int count = 120;
+    for (int i = 1; i <= count; ++i) {
+        sm.insertRecord({ { "id", std::to_string(i) }, { "payload", std::string(120, 'x') } });
+    }
+
+    const StorageStats st = sm.getStats();
+    CHECK(st.pages > 1);
+    CHECK(st.totalSlots == static_cast<size_t>(count));
+    CHECK(st.live == static_cast<size_t>(count));
+    CHECK(st.dead == 0);
+}

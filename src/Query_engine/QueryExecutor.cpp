@@ -54,7 +54,12 @@ bool QueryExecutor::findLiveRecord(const std::string& target, const std::string&
     // UPDATE y DELETE dejan atrás entradas de índice que apuntan a registros
     // con tombstone, así que recorremos todos los hits del índice y devolvemos
     // el primero que todavía esté vivo. La auto-compactación purga lo demás.
-    for (const RecordPointer& ptr : index_map[target][field]->search(value)) {
+    const auto table_it = index_map.find(target);
+    if (table_it == index_map.end()) return false;
+    const auto index_it = table_it->second.find(field);
+    if (index_it == table_it->second.end() || !index_it->second) return false;
+
+    for (const RecordPointer& ptr : index_it->second->search(value)) {
         if (!storage_units[target]->getRecord(ptr).empty()) {
             out = ptr;
             return true;
