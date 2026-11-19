@@ -12,12 +12,14 @@
 #include <cstring>
 #include <cstdlib>
 #include <algorithm>
+#include <stdexcept>
 
 #include "query_engine/QueryExecutor.h"
 #include "query_engine/tokenizer.h"
 #include "query_engine/parser.h"
 #include "Storage/StorageManager.h"
 #include "Storage/SchemaManager.h"
+#include "Storage/CsvExporter.h"
 #include "B-tree/IndexManager.h"
 #include "ui/GuiStrings.h"
 
@@ -603,6 +605,34 @@ int main() {
                         autoCompact(selectedTable, storage_units, index_map, registros_sucios);
                         pushLog(ui::str(ui::S::LogCompacted), sf::Color::Cyan);
                         refreshUI(); 
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button(ui::str(ui::S::ExportCsvBtn).c_str(), ImVec2(120, 30))) {
+                        // El CSV se escribe junto al .bin, en data/, con los
+                        // campos del esquema en su orden y los vivos en memoria.
+                        try {
+                            std::vector<std::map<std::string, std::string>> rows;
+                            rows.reserve(currentRecords.size());
+                            for (const auto& row : currentRecords) rows.push_back(row.second);
+
+                            // El 'id' no está en fieldsList (el formulario lo
+                            // omite a propósito), pero en el CSV sí debe salir.
+                            std::vector<std::string> columns = {"id"};
+                            for (const auto& f : currentSchema.fieldsList) columns.push_back(f);
+
+                            const std::string outPath = "data/" + selectedTable + ".csv";
+                            std::ofstream out(outPath, std::ios::binary);
+                            if (!out) throw std::runtime_error("no se pudo abrir " + outPath);
+                            // BOM UTF-8: Excel en Windows lo necesita para no
+                            // mostrar los acentos como caracteres extraños.
+                            out << "\xEF\xBB\xBF" << csv::build(rows, columns);
+                            if (!out) throw std::runtime_error("error al escribir " + outPath);
+
+                            pushLog(ui::strf(ui::S::LogExported, selectedTable, outPath),
+                                    sf::Color::Green);
+                        } catch (const std::exception& e) {
+                            pushLog(std::string("[Error] ") + e.what(), sf::Color::Red);
+                        }
                     }
 
                     ImGui::Separator();

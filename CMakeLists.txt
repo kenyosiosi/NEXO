@@ -28,6 +28,7 @@ add_library(nexo_core STATIC
   src/Storage/Serializer.cpp
   src/Storage/SchemaManager.cpp
   src/Storage/StorageManager.cpp
+  src/Storage/CsvExporter.cpp
   src/B-tree/IndexManager.cpp
   src/Query_engine/tokenizer.cpp
   src/Query_engine/parser.cpp
@@ -107,6 +108,7 @@ if(NEXO_BUILD_TESTS AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests)
     tests/test_btree.cpp
     tests/test_query.cpp
     tests/test_messages.cpp
+    tests/test_export.cpp
   )
   target_link_libraries(nexo_tests PRIVATE nexo_core doctest::doctest)
   add_test(NAME nexo_core COMMAND nexo_tests)

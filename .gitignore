@@ -31,6 +31,7 @@ Makefile
 data/*.bin
 data/*.idx
 data/*.schema
+data/*.csv
 # Opcional: Si quieres que la carpeta data se suba vacía, crea un archivo .gitkeep dentro
 # y comenta la línea de abajo.
 # data/
