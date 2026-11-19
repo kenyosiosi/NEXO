@@ -9,7 +9,7 @@ namespace {
 struct Entry { const char* es; const char* en; };
 
 // Tabla indexada por S. Los textos con {n} se formatean en strf().
-const std::array<Entry, 72> kCatalog = {{
+const std::array<Entry, 73> kCatalog = {{
     /* GuideTitle        */ {"Guía de NEXO", "NEXO Guide"},
     /* GuideTabStart     */ {"Primeros pasos", "Getting started"},
     /* GuideTabCmds      */ {"Comandos", "Commands"},
@@ -90,8 +90,8 @@ const std::array<Entry, 72> kCatalog = {{
     /* ConfirmDeleteText */ {"¿Eliminar el documento con ID {0}?\nEl borrado es lógico (tombstone) y desaparece al compactar.",
                            "Delete the document with ID {0}?\nDeletion is logical (tombstone) and disappears on compaction."},
     /* ConfirmYes        */ {"Sí, eliminar", "Yes, delete"},
-    /* EditModeHint      */ {"Editando doc {0} — modifica los campos y pulsa ACTUALIZAR.",
-                           "Editing doc {0} — change fields and press UPDATE."},
+    /* EditModeHint      */ {"Editando doc {0} — guarda con ACTUALIZAR.",
+                           "Editing doc {0} — save with UPDATE."},
     /* LogDeleteOk       */ {"Documento {0} eliminado lógicamente.", "Document {0} logically deleted."},
     /* LogUpdateOk       */ {"Documento {0} actualizado.", "Document {0} updated."},
     /* StatusData        */ {"data/: {0}", "data/: {0}"},
@@ -119,6 +119,8 @@ const std::array<Entry, 72> kCatalog = {{
     /* CmdHelpDesc       */ {"Muestra esta lista de comandos.",
                            "Shows this command list."},
     /* LogIndexDropped   */ {"Índice '{0}' eliminado.", "Index '{0}' dropped."},
+    /* LogDocStale       */ {"El documento ya no existe; la lista se ha recargado.",
+                             "The document no longer exists; the list was reloaded."},
 }};
 
 bool g_bannerSeen = false;

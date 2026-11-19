@@ -279,6 +279,14 @@ int main() {
     bool createInvalid = false;
     bool focusTerminal = true; // la terminal arranca enfocada: se puede escribir de inmediato
 
+    // Edición y borrado desde el visor de documentos.
+    bool editing = false;
+    RecordPointer editPtr = { -1, -1 };
+    std::string editId;
+    bool showDeleteModal = false;
+    RecordPointer deletePtr = { -1, -1 };
+    std::string deleteId;
+
     // Historial de la terminal (↑ / ↓).
     std::vector<std::string> cmdHistory;
     int cmdHistoryPos = -1;
@@ -493,7 +501,14 @@ int main() {
             if (ImGui::BeginTabBar("##collectionTabs")) {
                 // ---------------- Documentos ----------------
                 if (ImGui::BeginTabItem(ui::str(ui::S::TabDocs).c_str())) {
-                    ImGui::Text("%s", ui::str(ui::S::NewDocument).c_str());
+                    if (editing) {
+                        ImGui::PushTextWrapPos(0.0f);
+                        ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.30f, 1.0f), "%s",
+                                           ui::strf(ui::S::EditModeHint, editId).c_str());
+                        ImGui::PopTextWrapPos();
+                    } else {
+                        ImGui::Text("%s", ui::str(ui::S::NewDocument).c_str());
+                    }
                     for (auto& f : currentSchema.fieldsList) {
                         if (f == "id") continue; 
                         char buf[256] = "";
@@ -501,22 +516,54 @@ int main() {
                         if (ImGui::InputText(f.c_str(), buf, 256)) formInputs[f] = buf;
                     }
                     
-                    if (ImGui::Button(ui::str(ui::S::InsertBtn).c_str(), ImVec2(100, 30))) {
+                    const std::string primaryLabel = editing ? ui::str(ui::S::UpdateBtn)
+                                                             : ui::str(ui::S::InsertBtn);
+                    if (ImGui::Button(primaryLabel.c_str(), ImVec2(100, 30))) {
                         try {
-                            formInputs["id"] = std::to_string(currentSchema.nextId);
+                            auto* sm = storage_units[selectedTable];
 
-                            RecordPointer ptr = storage_units[selectedTable]->insertRecord(formInputs);
-                            for (auto const& [field, idx] : index_map[selectedTable]) {
-                                if (formInputs.count(field)) idx->insert(formInputs[field], ptr);
+                            if (editing) {
+                                // UPDATE = tombstone del documento viejo + alta
+                                // del nuevo. Las entradas de índice del viejo
+                                // quedan apuntando a un slot muerto: findLiveRecord
+                                // las ignora y COMPACTAR las purga.
+                                formInputs["id"] = editId;
+                                if (sm->getRecord(editPtr).empty()) {
+                                    pushLog(ui::str(ui::S::LogDocStale), sf::Color(240, 200, 80));
+                                } else {
+                                    sm->logicalDelete(editPtr);
+                                    registros_sucios[selectedTable]++;
+
+                                    RecordPointer fresh = sm->insertRecord(formInputs);
+                                    for (auto const& [field, idx] : index_map[selectedTable]) {
+                                        if (formInputs.count(field)) idx->insert(formInputs[field], fresh);
+                                    }
+                                    pushLog(ui::strf(ui::S::LogUpdateOk, editId), sf::Color::Green);
+                                }
+                                editing = false;
+                            } else {
+                                formInputs["id"] = std::to_string(currentSchema.nextId);
+
+                                RecordPointer ptr = sm->insertRecord(formInputs);
+                                for (auto const& [field, idx] : index_map[selectedTable]) {
+                                    if (formInputs.count(field)) idx->insert(formInputs[field], ptr);
+                                }
+
+                                saveSchema(selectedTable, currentSchema.nextId + 1, currentSchema.fields);
+
+                                pushLog(ui::strf(ui::S::LogInsertOk, formInputs["id"]), sf::Color::Green);
                             }
-
-                            saveSchema(selectedTable, currentSchema.nextId + 1, currentSchema.fields);
-
-                            pushLog(ui::strf(ui::S::LogInsertOk, formInputs["id"]), sf::Color::Green);
                             formInputs.clear();
                             refreshUI();
                         } catch (const std::exception& e) {
                             pushLog(std::string("[Error] ") + e.what(), sf::Color::Red);
+                        }
+                    }
+                    if (editing) {
+                        ImGui::SameLine();
+                        if (ImGui::Button(ui::str(ui::S::CancelBtn).c_str(), ImVec2(100, 30))) {
+                            editing = false;
+                            formInputs.clear();
                         }
                     }
                     ImGui::SameLine();
@@ -532,8 +579,10 @@ int main() {
                     
                     int doc_idx = 0;
                     for (auto& row : currentRecords) {
+                        ImGui::PushID(doc_idx);
                         std::string header = "Doc [" + std::to_string(row.first.page_id) + ":" + std::to_string(row.first.slot_offset) + "]";
-                        if (row.second.count("id")) header += " | ID: " + row.second["id"];
+                        const std::string docId = row.second.count("id") ? row.second["id"] : "";
+                        if (!docId.empty()) header += " | ID: " + docId;
 
                         if (ImGui::TreeNode((void*)(intptr_t)doc_idx, "%s", header.c_str())) {
                             for (auto const& [k, v] : row.second) {
@@ -543,7 +592,30 @@ int main() {
                             }
                             ImGui::TreePop();
                         }
+
+                        // Editar / Eliminar alineados a la derecha de la fila.
+                        const ImGuiStyle& st = ImGui::GetStyle();
+                        const float buttonsW =
+                            ImGui::CalcTextSize(ui::str(ui::S::EditBtn).c_str()).x +
+                            ImGui::CalcTextSize(ui::str(ui::S::DeleteBtn).c_str()).x +
+                            st.FramePadding.x * 4.0f + st.ItemSpacing.x + 8.0f;
+                        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - buttonsW);
+                        if (ImGui::SmallButton(ui::str(ui::S::EditBtn).c_str())) {
+                            formInputs = row.second;
+                            formInputs.erase("id");
+                            editPtr = row.first;
+                            editId = docId;
+                            editing = true;
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton(ui::str(ui::S::DeleteBtn).c_str())) {
+                            deletePtr = row.first;
+                            deleteId = docId;
+                            showDeleteModal = true;
+                        }
+
                         ImGui::Separator();
+                        ImGui::PopID();
                         doc_idx++;
                     }
                     ImGui::EndChild();
@@ -780,6 +852,41 @@ int main() {
 
             ImGui::Separator();
             if (ImGui::Button(ui::str(ui::S::CancelBtn).c_str(), ImVec2(120, 0))) ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
+
+        // --- Modal de confirmación de borrado ------------------------------
+        if (showDeleteModal) {
+            ImGui::OpenPopup(ui::str(ui::S::ConfirmDeleteTitle).c_str());
+            showDeleteModal = false;
+        }
+
+        if (ImGui::BeginPopupModal(ui::str(ui::S::ConfirmDeleteTitle).c_str(), NULL,
+                                   ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::TextUnformatted(ui::strf(ui::S::ConfirmDeleteText, deleteId).c_str());
+            ImGui::Spacing();
+
+            if (ImGui::Button(ui::str(ui::S::ConfirmYes).c_str(), ImVec2(120, 0))) {
+                auto* sm = storage_units.count(selectedTable) ? storage_units[selectedTable] : nullptr;
+                if (sm && !sm->getRecord(deletePtr).empty()) {
+                    // Borrado lógico: la compactación recupera el espacio.
+                    sm->logicalDelete(deletePtr);
+                    registros_sucios[selectedTable]++;
+                    pushLog(ui::strf(ui::S::LogDeleteOk, deleteId), sf::Color(255, 170, 90));
+                }
+                // Si estábamos editando ese mismo documento, salimos del modo.
+                if (editing && editPtr.page_id == deletePtr.page_id &&
+                    editPtr.slot_offset == deletePtr.slot_offset) {
+                    editing = false;
+                    formInputs.clear();
+                }
+                deletePtr = { -1, -1 };
+                refreshUI();
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(ui::str(ui::S::CancelBtn).c_str(), ImVec2(120, 0)))
+                ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
 

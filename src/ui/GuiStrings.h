@@ -90,6 +90,7 @@ enum class S {
     CmdDropDesc,
     CmdHelpDesc,
     LogIndexDropped,       // {0} = campo
+    LogDocStale,
 };
 
 // Texto del id en el idioma activo de la UI.
