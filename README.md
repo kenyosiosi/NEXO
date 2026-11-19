@@ -27,7 +27,7 @@ A **non-relational DBMS built from scratch in C++17**, with a page-based storage
 
 ## Download
 
-Grab a self-contained Windows build (no installer, no DLLs — a single ~5 MB exe) from the
+Grab a self-contained Windows build (no installer, no DLLs — a single ~5 MB exe with the UI font embedded) from the
 [**Releases page**](https://github.com/kenyosiosi/NEXO/releases): download `NexoEngine-vX.Y.Z-windows-x64.zip`, unzip, run `NexoEngine.exe`.
 
 ## Build from source
@@ -55,7 +55,7 @@ Requirements: [MSYS2](https://www.msys2.org/) with `pacman -S mingw-w64-ucrt-x86
 Requirements: `cmake ninja-build` and the dev headers SFML needs
 (`libgl1-mesa-dev libx11-dev libxrandr-dev libxcursor-dev libxi-dev libudev-dev libfreetype-dev`).
 
-The binary is written to `build/NexoEngine.exe` (Windows) or `build-linux/NexoEngine` (Linux); run it from that directory so it can find `assets/` and `data/`.
+The binary is written to `build/NexoEngine.exe` (Windows) or `build-linux/NexoEngine` (Linux); run it from that directory so it can find `assets/` and `data/`. On Windows the UI font is compiled into the executable, so the build looks the same even when copied elsewhere without `assets/`.
 
 ## Tests
 

@@ -23,11 +23,34 @@
 #include "B-tree/IndexManager.h"
 #include "ui/GuiStrings.h"
 
+#ifndef NEXO_VERSION
+#define NEXO_VERSION "dev" // compilado fuera de CMake (IDE suelto)
+#endif
+
 #ifdef _WIN32
     #include <windows.h>
     #ifdef DELETE
         #undef DELETE 
     #endif
+#endif
+
+#ifdef _WIN32
+// La fuente de la UI viaja dentro del .exe como recurso RCDATA: el build
+// portable se ve igual que las capturas sin depender de la carpeta assets/.
+static std::vector<unsigned char> cargarFuenteEmbebida() {
+    std::vector<unsigned char> bytes;
+    HMODULE mod = GetModuleHandleW(nullptr);
+    HRSRC res = FindResourceA(mod, "NEXO_FONT", RT_RCDATA);
+    if (!res) return bytes;
+    const DWORD size = SizeofResource(mod, res);
+    HGLOBAL handle = LoadResource(mod, res);
+    if (!handle || size == 0) return bytes;
+    const void* data = LockResource(handle);
+    if (!data) return bytes;
+    const auto* first = static_cast<const unsigned char*>(data);
+    bytes.assign(first, first + size);
+    return bytes;
+}
 #endif
 
 namespace fs = std::filesystem;
@@ -187,10 +210,27 @@ int main() {
             0x25A0, 0x25FF, // formas geométricas
             0,
         };
-        const std::string font_path = localizarAsset("assets/fonts/JetBrainsMono-Regular.ttf");
-        const bool loaded = !font_path.empty() &&
-            io.Fonts->AddFontFromFileTTF(font_path.c_str(), 17.0f, nullptr, kGlyphRanges) != nullptr;
-        if (!loaded) io.Fonts->AddFontDefault(); // nunca dejar el atlas vacío
+
+        // En Windows la fuente viaja dentro del .exe (recurso RCDATA), así el
+        // build portable se ve igual que las capturas aunque se copie solo.
+        // El atlas no es dueño de estos bytes: el vector vive todo el proceso.
+        static std::vector<unsigned char> fuente;
+#ifdef _WIN32
+        fuente = cargarFuenteEmbebida();
+#endif
+        ImFontConfig cfg;
+        cfg.FontDataOwnedByAtlas = false;
+
+        ImFont* font = nullptr;
+        if (!fuente.empty())
+            font = io.Fonts->AddFontFromMemoryTTF(fuente.data(), static_cast<int>(fuente.size()),
+                                                  17.0f, &cfg, kGlyphRanges);
+        if (!font) {
+            const std::string font_path = localizarAsset("assets/fonts/JetBrainsMono-Regular.ttf");
+            if (!font_path.empty())
+                font = io.Fonts->AddFontFromFileTTF(font_path.c_str(), 17.0f, nullptr, kGlyphRanges);
+        }
+        if (!font) io.Fonts->AddFontDefault(); // nunca dejar el atlas vacío
         if (!ImGui::SFML::UpdateFontTexture())
             std::cerr << "[Nexo] no se pudo subir el atlas de fuentes\n";
     }
@@ -442,7 +482,7 @@ int main() {
         // --- Barra superior: título, idioma y ayuda -------------------------
         ImGui::TextColored(ImVec4(0.2f, 0.8f, 1.0f, 1.0f), "NEXO Workspace");
         ImGui::SameLine();
-        ImGui::TextDisabled("v1.1");
+        ImGui::TextDisabled("v" NEXO_VERSION);
 
         const float topRight = ImGui::GetWindowWidth() - 8.0f;
         const bool esActive = (nexo::lang() == nexo::Lang::ES);

@@ -27,7 +27,7 @@ Un **Sistema de Gestión de Bases de Datos (DBMS) no relacional desarrollado des
 
 ## Descarga
 
-Descarga un build de Windows autocontenido (sin instalador ni DLLs — un solo exe de ~5 MB) desde la
+Descarga un build de Windows autocontenido (sin instalador ni DLLs — un solo exe de ~5 MB con la fuente de la UI embebida) desde la
 [**página de Releases**](https://github.com/kenyosiosi/NEXO/releases): baja `NexoEngine-vX.Y.Z-windows-x64.zip`, descomprime y ejecuta `NexoEngine.exe`.
 
 ## Compilar desde el código fuente
@@ -55,7 +55,7 @@ Requisitos: [MSYS2](https://www.msys2.org/) con `pacman -S mingw-w64-ucrt-x86_64
 Requisitos: `cmake ninja-build` y los headers dev que SFML necesita
 (`libgl1-mesa-dev libx11-dev libxrandr-dev libxcursor-dev libxi-dev libudev-dev libfreetype-dev`).
 
-El binario queda en `build/NexoEngine.exe` (Windows) o `build-linux/NexoEngine` (Linux); ejecútalo desde ese directorio para que encuentre `assets/` y `data/`.
+El binario queda en `build/NexoEngine.exe` (Windows) o `build-linux/NexoEngine` (Linux); ejecútalo desde ese directorio para que encuentre `assets/` y `data/`. En Windows la fuente de la UI va compilada dentro del ejecutable, así que el build se ve igual aunque se copie a otra carpeta sin `assets/`.
 
 ## Tests
 

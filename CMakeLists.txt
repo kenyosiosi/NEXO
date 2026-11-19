@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 project(NexoEngine
-  VERSION 1.1.0
+  VERSION 1.1.1
   DESCRIPTION "NEXO: a non-relational DBMS engine with a Workspace UI"
   LANGUAGES CXX
 )
@@ -72,6 +72,9 @@ if(NEXO_BUILD_GUI)
     enable_language(RC)
     # Absolute path so windres resolves the icon regardless of build directory.
     set(NEXO_ICON_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/nexo.ico")
+    # The UI font travels inside the exe as RCDATA so the portable build looks
+    # exactly like the screenshots even when copied without the assets folder.
+    set(NEXO_FONT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/JetBrainsMono-Regular.ttf")
     configure_file(resources.rc.in ${CMAKE_CURRENT_BINARY_DIR}/resources.rc @ONLY)
   endif()
 
@@ -82,6 +85,8 @@ if(NEXO_BUILD_GUI)
   )
   target_link_libraries(NexoEngine PRIVATE nexo_core ImGui-SFML::ImGui-SFML)
   target_include_directories(NexoEngine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  # El título de la ventana lee la versión de CMake, así nunca se desincroniza.
+  target_compile_definitions(NexoEngine PRIVATE NEXO_VERSION="${PROJECT_VERSION}")
 
   if(WIN32)
     # Sin ventana de consola: la UI es la única interfaz.
