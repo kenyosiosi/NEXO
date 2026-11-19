@@ -115,14 +115,15 @@
   </div>
 </section>
 
-<div class="shot"><img src="https://raw.githubusercontent.com/kenyosiosi/NEXO/main/docs/screenshot.png" alt="NEXO Engine workspace UI"></div>
+<div class="shot"><img src="https://raw.githubusercontent.com/kenyosiosi/NEXO/main/docs/demo.gif" alt="NEXO Engine in action: creating an index, editing a document, exporting CSV and switching to English"></div>
 
 <section class="features">
   <div class="card"><h3>Page-based storage</h3><p>Heap Files in 4096-byte slotted pages, logical deletes with tombstones and auto-compact that physically reclaims space.</p></div>
   <div class="card"><h3>B-Tree indexes</h3><p>Persistent trees with a parametric minimum degree, page-aligned on disk. Secondary indexes built over live data on demand.</p></div>
   <div class="card"><h3>Query language</h3><p>Tokenizer → parser → AST → executor for CREATE, INSERT, GET, UPDATE, DELETE, SCAN, INDEX, STATS, DROP and COMPACT.</p></div>
-  <div class="card"><h3>Workspace GUI</h3><p>Collection explorer, JSON-tree document viewer and an interactive terminal, rendered with Dear ImGui + SFML 3.</p></div>
-  <div class="card"><h3>Tested &amp; hardened</h3><p>~1500 doctest assertions cover the engine; every buffer, offset and pointer is validated before it is trusted.</p></div>
+  <div class="card"><h3>Workspace GUI</h3><p>Documents, live statistics and index management in one window: edit and delete in place, drop or create B-Trees, export to CSV.</p></div>
+  <div class="card"><h3>Bilingual ES / EN</h3><p>Every UI label and engine message lives in a bilingual catalog, switched from the header without restarting.</p></div>
+  <div class="card"><h3>Tested &amp; hardened</h3><p>45 doctest cases / 1540 assertions cover the engine; every buffer, offset and pointer is validated before it is trusted.</p></div>
   <div class="card"><h3>Portable build</h3><p>CMake + FetchContent downloads SFML 3 and ImGui automatically. One command to build on Windows and Linux.</p></div>
 </section>
 
@@ -138,7 +139,8 @@ $ ./build.sh --test    # Linux / WSL</pre>
   <a href="https://github.com/Rafael-A69">Rafael-A69</a> ·
   <a href="https://github.com/Chinoto03">Chinoto03</a> ·
   <a href="https://github.com/kenyosiosi">kenyosiosi</a> ·
-  <a href="https://github.com/kenyosiosi/NEXO/blob/main/LICENSE">MIT License</a>
+  <a href="https://github.com/kenyosiosi/NEXO/blob/main/LICENSE">MIT License</a> ·
+  <a href="https://github.com/kenyosiosi/NEXO/blob/main/README.es.md">Leer en español</a>
 </footer>
 
 </body>
